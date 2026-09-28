@@ -2,7 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { FicheFormulaire } from "@/components/fiche-formulaire";
 import { Reveler } from "@/components/reveler";
-import { prochainNumero } from "@/lib/fiches";
+import { prochainNumero, historiqueParClient } from "@/lib/fiches";
+import { listerClients } from "@/lib/clients";
+import { listerEquipements } from "@/lib/equipements";
 import { lireSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +13,18 @@ export default async function PageNouvelleFiche() {
   const session = await lireSession();
   if (!session) redirect("/connexion");
 
-  const numero = await prochainNumero();
+  const [numero, clients, equipements] = await Promise.all([
+    prochainNumero(),
+    listerClients(),
+    listerEquipements(),
+  ]);
+
+  // Historique groupé par client — une seule requête pour tous les clients
+  // susceptibles d'être sélectionnés dans le formulaire.
+  const historique = await historiqueParClient(
+    clients.map((c) => c.id),
+    5,
+  );
 
   return (
     <div className="space-y-8">
@@ -41,7 +54,13 @@ export default async function PageNouvelleFiche() {
       </Reveler>
 
       <Reveler delai={90}>
-        <FicheFormulaire numeroPropose={numero} technicienParDefaut={session.technicien} />
+        <FicheFormulaire
+          numeroPropose={numero}
+          technicienParDefaut={session.technicien}
+          clients={clients}
+          equipements={equipements}
+          historique={historique}
+        />
       </Reveler>
     </div>
   );

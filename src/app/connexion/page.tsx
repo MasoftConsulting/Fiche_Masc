@@ -18,10 +18,7 @@ export default async function PageConnexion({
       <div className="mx-auto grid w-full max-w-6xl items-center gap-10 md:min-h-[80vh] md:grid-cols-[1.15fr_0.85fr] md:gap-16">
         {/* Bloc éditorial */}
         <section>
-          <span className="inline-flex items-center gap-2 rounded-full bg-ink/[0.05] px-3 py-1 text-[10px] font-medium uppercase tracking-[0.2em] text-ink-soft">
-            <span className="h-1.5 w-1.5 rounded-full bg-brand" />
-            Terrain · Togo
-          </span>
+        
 
           <h1 className="mt-7 font-display text-[2.9rem] leading-[0.94] font-semibold tracking-[-0.045em] text-ink sm:text-[4rem] md:text-[4.9rem]">
             La fiche

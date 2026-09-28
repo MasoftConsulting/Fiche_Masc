@@ -116,6 +116,39 @@ export async function listerTechniciensAvecStats(): Promise<TechnicienAvecStats[
   });
 }
 
+/** Un technicien par son identifiant, ou null s'il n'existe pas. */
+export async function lireTechnicien(id: string): Promise<Technicien | null> {
+  const supabase = createAdminClient();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[techniciens] lireTechnicien", error.message);
+    return null;
+  }
+  return (data as Technicien) ?? null;
+}
+
+/**
+ * Un technicien avec ses statistiques d'activité.
+ *
+ * Réutilise l'agrégat global plutôt que d'écrire une requête dédiée : à
+ * l'échelle d'une équipe (quelques dizaines de personnes), le surcoût de
+ * calculer les stats de tout le monde puis de filtrer est négligeable, et
+ * cela évite de dupliquer la logique de comptage à deux endroits.
+ */
+export async function lireTechnicienAvecStats(
+  id: string,
+): Promise<TechnicienAvecStats | null> {
+  const tous = await listerTechniciensAvecStats();
+  return tous.find((t) => t.id === id) ?? null;
+}
+
 /* --------------------------------------------------------------- écriture */
 
 export type ResultatCode = { technicien: Technicien; code: string };
@@ -189,6 +222,35 @@ export async function modifierTechnicien(
 
   const { error } = await supabase.from(TABLE).update(valeurs).eq("id", id);
   return error ? { erreur: error.message } : {};
+}
+
+/**
+ * Vrai si ce technicien est le dernier administrateur actif de la plateforme.
+ *
+ * Empêche les manipulations qui laisseraient l'application sans aucun admin :
+ * rétrograder ou désactiver le dernier — plus personne ne pourrait créer de
+ * technicien, régénérer un code, ou administrer l'équipe.
+ *
+ * Comportement fail-safe : en cas d'erreur SQL, on considère qu'il s'agit du
+ * dernier admin et on refuse la modification. Mieux vaut un blocage qu'une
+ * plateforme verrouillée.
+ */
+export async function estDernierAdminActif(id: string): Promise<boolean> {
+  const supabase = createAdminClient();
+  if (!supabase) return true;
+
+  const { count, error } = await supabase
+    .from(TABLE)
+    .select("*", { count: "exact", head: true })
+    .eq("role", "admin")
+    .eq("actif", true)
+    .neq("id", id);
+
+  if (error) {
+    console.error("[techniciens] estDernierAdminActif", error.message);
+    return true;
+  }
+  return (count ?? 0) === 0;
 }
 
 export async function supprimerTechnicien(id: string) {

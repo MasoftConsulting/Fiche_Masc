@@ -12,7 +12,11 @@ const LIENS = [
 ];
 
 /** L'administration n'apparaît que pour qui peut y entrer. */
-const LIEN_ADMIN = { href: "/admin", label: "Techniciens" };
+const LIENS_ADMIN = [
+  { href: "/admin", label: "Techniciens" },
+  { href: "/admin/clients", label: "Clients" },
+  { href: "/admin/journal", label: "Journal" },
+];
 
 /**
  * Barre flottante détachée du haut de page. Sur mobile, le menu s'ouvre en
@@ -29,7 +33,7 @@ export function Navigation({
 }) {
   const chemin = usePathname();
   const [ouvert, setOuvert] = useState(false);
-  const liens = role === "admin" ? [...LIENS, LIEN_ADMIN] : LIENS;
+  const liens = role === "admin" ? [...LIENS, ...LIENS_ADMIN] : LIENS;
 
   useEffect(() => {
     document.body.style.overflow = ouvert ? "hidden" : "";
@@ -38,8 +42,19 @@ export function Navigation({
     };
   }, [ouvert]);
 
-  const actif = (href: string) =>
-    href === "/fiches" ? chemin === "/fiches" : chemin.startsWith(href);
+  /**
+   * Détermine si un lien est actif.
+   *
+   * Les racines (`/fiches`, `/admin`) matchent en exact pour éviter que
+   * `/admin/journal` n'allume aussi le lien `/admin`. Les sous-routes
+   * utilisent `startsWith(`${href}/`)` avec le slash final, plus précis
+   * qu'un simple `startsWith(href)` : `/admin/clients` n'allumera pas un
+   * hypothétique `/admin/clients-archivés`.
+   */
+  const actif = (href: string) => {
+    if (href === "/fiches" || href === "/admin") return chemin === href;
+    return chemin === href || chemin.startsWith(`${href}/`);
+  };
 
   return (
     <>
