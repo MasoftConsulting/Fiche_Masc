@@ -4,38 +4,86 @@ import type { Fiche } from "./types";
 
 const TABLE = "fiches_intervention";
 
+/** Nombre de fiches par page dans le registre. */
+export const FICHES_PAR_PAGE = 25;
+
 /** Valeur du filtre visant les fiches sans auteur rattaché. */
 export const SANS_TECHNICIEN = "sans";
+
+/** Périodes prédéfinies pour filtrer le registre. */
+export type Periode = "7j" | "mois" | "annee";
 
 export type Filtres = {
   recherche?: string;
   statut?: string;
-  /**
-   * Filtre choisi dans l'interface (réservé à l'administrateur) : l'identifiant
-   * d'un technicien, ou SANS_TECHNICIEN pour les fiches non rattachées.
-   */
   technicienId?: string;
-  /**
-   * Cloisonnement : un technicien ne voit que ses propres fiches. Appliqué
-   * après le filtre d'interface, il ne peut donc pas être contourné en
-   * bricolant l'URL.
-   */
   limiteA?: string | null;
+  /** Filtre temporel : 7 derniers jours, mois courant, année courante. */
+  periode?: Periode | null;
+  page?: number;
+  limite?: number;
 };
 
-/** Liste des fiches, la plus récente en tête. */
-export async function listerFiches(filtres: Filtres = {}): Promise<Fiche[]> {
-  const supabase = createAdminClient();
-  if (!supabase) return [];
+export type ResultatListe = {
+  fiches: Fiche[];
+  total: number;
+  pages: number;
+  page: number;
+};
 
-  let requete = supabase.from(TABLE).select("*").order("created_at", { ascending: false });
+/**
+ * Convertit une période nommée en borne inférieure ISO (created_at >= borne).
+ *
+ * On se base sur `created_at` plutôt que `date_intervention` : c'est la date
+ * de saisie, toujours renseignée, y compris pour les brouillons. Elle
+ * correspond également à celle utilisée par la tuile « ce mois-ci » de la
+ * page /fiches, ce qui évite qu'un filtre et son compteur ne concordent pas.
+ */
+export function bornePeriode(periode: Periode, maintenant = new Date()): string {
+  if (periode === "7j") {
+    const il7j = new Date(maintenant);
+    il7j.setDate(il7j.getDate() - 7);
+    il7j.setHours(0, 0, 0, 0);
+    return il7j.toISOString();
+  }
+  if (periode === "annee") {
+    return new Date(maintenant.getFullYear(), 0, 1).toISOString();
+  }
+  // "mois" : premier jour du mois courant à minuit
+  return new Date(maintenant.getFullYear(), maintenant.getMonth(), 1).toISOString();
+}
+
+/** Vrai si la chaîne fournie est une période reconnue. */
+export function estPeriode(valeur: unknown): valeur is Periode {
+  return valeur === "7j" || valeur === "mois" || valeur === "annee";
+}
+
+/** Liste paginée des fiches, la plus récente en tête. */
+export async function listerFiches(
+  filtres: Filtres = {},
+): Promise<ResultatListe> {
+  const supabase = createAdminClient();
+
+  const page = Math.max(1, filtres.page ?? 1);
+  const limite = filtres.limite ?? FICHES_PAR_PAGE;
+
+  if (!supabase) {
+    return { fiches: [], total: 0, pages: 1, page };
+  }
+
+  const debut = (page - 1) * limite;
+  const fin = debut + limite - 1;
+
+  let requete = supabase
+    .from(TABLE)
+    .select("*", { count: "exact" })
+    .order("created_at", { ascending: false })
+    .range(debut, fin);
 
   if (filtres.statut === "brouillon" || filtres.statut === "signee") {
     requete = requete.eq("statut", filtres.statut);
   }
   if (filtres.technicienId === SANS_TECHNICIEN) {
-    // Fiches saisies avec le code d'amorçage administrateur, ou dont le
-    // technicien a été supprimé depuis (`on delete set null`).
     requete = requete.is("technicien_id", null);
   } else if (filtres.technicienId) {
     requete = requete.eq("technicien_id", filtres.technicienId);
@@ -43,32 +91,51 @@ export async function listerFiches(filtres: Filtres = {}): Promise<Fiche[]> {
   if (filtres.limiteA) {
     requete = requete.eq("technicien_id", filtres.limiteA);
   }
+  if (filtres.periode) {
+    requete = requete.gte("created_at", bornePeriode(filtres.periode));
+  }
   if (filtres.recherche) {
-    // Échappe les virgules et parenthèses, qui sont des séparateurs dans la
-    // syntaxe `or()` de PostgREST et casseraient la requête.
     const terme = filtres.recherche.replace(/[,()]/g, " ").trim();
     if (terme) {
       requete = requete.or(
-        ["numero", "societe", "contact", "technicien", "marque_modele", "numero_serie"]
+        [
+          "numero",
+          "societe",
+          "contact",
+          "technicien",
+          "marque_modele",
+          "numero_serie",
+        ]
           .map((c) => `${c}.ilike.%${terme}%`)
           .join(","),
       );
     }
   }
 
-  const { data, error } = await requete.limit(500);
+  const { data, count, error } = await requete;
   if (error) {
     console.error("[fiches] listerFiches", error.message);
-    return [];
+    return { fiches: [], total: 0, pages: 1, page };
   }
-  return (data ?? []) as Fiche[];
+
+  const total = count ?? 0;
+  return {
+    fiches: (data ?? []) as Fiche[],
+    total,
+    pages: Math.max(1, Math.ceil(total / limite)),
+    page,
+  };
 }
 
 export async function lireFiche(id: string): Promise<Fiche | null> {
   const supabase = createAdminClient();
   if (!supabase) return null;
 
-  const { data, error } = await supabase.from(TABLE).select("*").eq("id", id).maybeSingle();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
   if (error) {
     console.error("[fiches] lireFiche", error.message);
     return null;
@@ -77,12 +144,31 @@ export async function lireFiche(id: string): Promise<Fiche | null> {
 }
 
 /**
- * Numéro suivant au format FI-AAAA-NNN.
+ * Charge plusieurs fiches en une seule requête.
  *
- * Calculé par la fonction SQL `prochain_numero_fiche` : la lecture du maximum
- * et l'insertion restent proches dans le temps, et la contrainte d'unicité sur
- * `numero` rattrape le cas limite de deux créations simultanées.
+ * Utilisée par l'impression en lot : `Promise.all(ids.map(lireFiche))` ferait
+ * N allers-retours alors qu'un `IN (...)` en fait un seul. Sur un lot de 50
+ * fiches, la différence est perceptible.
+ *
+ * L'ordre n'est pas garanti par la base : on ne s'en sert pas côté impression
+ * (chaque fiche est autonome) mais l'appelant peut trier après coup s'il en a
+ * besoin.
  */
+export async function lireFiches(ids: string[]): Promise<Fiche[]> {
+  if (ids.length === 0) return [];
+
+  const supabase = createAdminClient();
+  if (!supabase) return [];
+
+  const { data, error } = await supabase.from(TABLE).select("*").in("id", ids);
+
+  if (error) {
+    console.error("[fiches] lireFiches", error.message);
+    return [];
+  }
+  return (data ?? []) as Fiche[];
+}
+
 export async function prochainNumero(): Promise<string> {
   const annee = new Date().getFullYear();
   const supabase = createAdminClient();
@@ -96,25 +182,85 @@ export async function prochainNumero(): Promise<string> {
   return data;
 }
 
-/** Synthèse du registre, cloisonnée au technicien si `limiteA` est fourni. */
 export async function compterParStatut(limiteA?: string | null) {
   const supabase = createAdminClient();
-  if (!supabase) return { total: 0, brouillon: 0, signee: 0, mois: 0 };
-
-  let requete = supabase.from(TABLE).select("statut, created_at").limit(5000);
-  if (limiteA) requete = requete.eq("technicien_id", limiteA);
-
-  const { data } = await requete;
-  const lignes = (data ?? []) as { statut: string; created_at: string }[];
+  const vide = { total: 0, brouillon: 0, signee: 0, mois: 0 };
+  if (!supabase) return vide;
 
   const debutMois = new Date();
   debutMois.setDate(1);
   debutMois.setHours(0, 0, 0, 0);
+  const isoDebutMois = debutMois.toISOString();
+
+  const base = () => {
+    let q = supabase
+      .from(TABLE)
+      .select("*", { count: "exact", head: true });
+    if (limiteA) q = q.eq("technicien_id", limiteA);
+    return q;
+  };
+
+  const [total, brouillon, signee, mois] = await Promise.all([
+    base(),
+    base().eq("statut", "brouillon"),
+    base().eq("statut", "signee"),
+    base().gte("created_at", isoDebutMois),
+  ]);
 
   return {
-    total: lignes.length,
-    brouillon: lignes.filter((l) => l.statut === "brouillon").length,
-    signee: lignes.filter((l) => l.statut === "signee").length,
-    mois: lignes.filter((l) => new Date(l.created_at) >= debutMois).length,
+    total: total.count ?? 0,
+    brouillon: brouillon.count ?? 0,
+    signee: signee.count ?? 0,
+    mois: mois.count ?? 0,
   };
+}
+
+/** Résumé d'une fiche pour les listes d'historique. */
+export type FicheResume = {
+  id: string;
+  numero: string;
+  date_intervention: string | null;
+  resultat: string | null;
+  statut: string;
+  client_id: string;
+  created_at: string;
+};
+
+/**
+ * Historique des interventions, groupé par client.
+ *
+ * Une seule requête pour tous les clients demandés (généralement ceux
+ * référencés par le formulaire de fiche), puis on garde les N plus récentes
+ * par client en mémoire. À l'échelle d'une PME — quelques clients, quelques
+ * centaines de fiches — c'est plus simple qu'une fenêtre SQL et le coût est
+ * négligeable.
+ *
+ * L'ordre est décroissant par `created_at`, comme le registre principal.
+ */
+export async function historiqueParClient(
+  clientIds: string[],
+  limiteParClient = 5,
+): Promise<Record<string, FicheResume[]>> {
+  if (clientIds.length === 0) return {};
+
+  const supabase = createAdminClient();
+  if (!supabase) return {};
+
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select("id, numero, date_intervention, resultat, statut, client_id, created_at")
+    .in("client_id", clientIds)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[fiches] historiqueParClient", error.message);
+    return {};
+  }
+
+  const parClient: Record<string, FicheResume[]> = {};
+  for (const ligne of (data ?? []) as FicheResume[]) {
+    const liste = parClient[ligne.client_id] ?? (parClient[ligne.client_id] = []);
+    if (liste.length < limiteParClient) liste.push(ligne);
+  }
+  return parClient;
 }

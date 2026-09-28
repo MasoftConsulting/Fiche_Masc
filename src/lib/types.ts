@@ -11,11 +11,26 @@ export type Fiche = {
   heure_depart: string | null;
   facturable: string | null;
 
+  /**
+   * Champs de snapshot : recopiés au moment de l'intervention depuis le
+   * référentiel client. Ils ne sont jamais mis à jour quand le client est
+   * renommé plus tard — une fiche signée reste la preuve de ce qui a été
+   * signé, avec les valeurs de l'époque.
+   */
   societe: string | null;
   adresse: string | null;
   contact: string | null;
   telephone: string | null;
   email: string | null;
+
+  /**
+   * Référence vers le client du référentiel. Nullable : les fiches créées
+   * avant la mise en place des clients n'y sont pas rattachées, et la
+   * suppression d'un client fait retomber ce champ à null sans toucher aux
+   * colonnes texte ci-dessus.
+   */
+  client_id: string | null;
+
   /** Nom figé, tel qu'il s'imprime sur la fiche. */
   technicien: string | null;
   /** Auteur de la fiche, pour le cloisonnement et les statistiques. */
@@ -24,10 +39,20 @@ export type Fiche = {
   types: string[];
   type_autre: string | null;
 
+  /**
+   * Champs de snapshot : recopiés depuis l'équipement sélectionné au moment
+   * de l'intervention. Même logique que pour le client.
+   */
   marque_modele: string | null;
   numero_serie: string | null;
   adresse_ip: string | null;
   localisation: string | null;
+
+  /**
+   * Référence vers l'équipement concerné. Nullable pour les mêmes raisons que
+   * `client_id`.
+   */
+  equipement_id: string | null;
 
   compteur_nb: string | null;
   compteur_nb_valide: boolean;

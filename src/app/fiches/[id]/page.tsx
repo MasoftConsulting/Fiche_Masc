@@ -1,21 +1,41 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { FicheFormulaire } from "@/components/fiche-formulaire";
 import { Reveler } from "@/components/reveler";
 import { PuceStatut } from "@/components/statut";
 import { supprimerFiche } from "@/app/actions";
-import { lireFiche } from "@/lib/fiches";
+import { lireFiche, historiqueParClient } from "@/lib/fiches";
+import { listerClients } from "@/lib/clients";
+import { listerEquipements } from "@/lib/equipements";
 import { lireSession } from "@/lib/session";
 import { formaterDateHeure } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
+type Params = Promise<{ id: string }>;
+type Search = Promise<{ enregistre?: string }>;
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Params;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const fiche = await lireFiche(id);
+  if (!fiche) return { title: "Fiche introuvable" };
+  return {
+    title: `${fiche.numero} · ${fiche.societe ?? "Sans société"}`,
+    description: `Fiche d'intervention ${fiche.numero}`,
+  };
+}
+
 export default async function PageFiche({
   params,
   searchParams,
 }: {
-  params: Promise<{ id: string }>;
-  searchParams: Promise<{ enregistre?: string }>;
+  params: Params;
+  searchParams: Search;
 }) {
   const session = await lireSession();
   if (!session) redirect("/connexion");
@@ -23,13 +43,24 @@ export default async function PageFiche({
   const { id } = await params;
   const { enregistre } = await searchParams;
 
-  const fiche = await lireFiche(id);
-  if (!fiche) notFound();
+  const [fiche, clients, equipements] = await Promise.all([
+    lireFiche(id),
+    listerClients(),
+    listerEquipements(),
+  ]);
 
-  // Cloisonnement : hors administration, on n'ouvre que ses propres fiches.
-  // `notFound` plutôt qu'un message d'erreur — inutile de révéler l'existence
-  // d'une fiche appartenant à quelqu'un d'autre.
+  if (!fiche) notFound();
   if (session.role !== "admin" && fiche.technicien_id !== session.id) notFound();
+
+  // Historique par client, comme pour la création. On exclut la fiche en cours
+  // d'édition de son propre historique.
+  const historique = await historiqueParClient(
+    clients.map((c) => c.id),
+    6, // 6 pour compenser l'exclusion de la fiche courante
+  );
+  for (const [clientId, liste] of Object.entries(historique)) {
+    historique[clientId] = liste.filter((f) => f.id !== fiche.id).slice(0, 5);
+  }
 
   return (
     <div className="space-y-8">
@@ -37,9 +68,20 @@ export default async function PageFiche({
         <header className="pt-8 md:pt-14">
           <Link
             href="/fiches"
+            aria-label="Retour à la liste des fiches"
             className="inline-flex items-center gap-2 text-[0.8rem] text-ink-soft transition-colors duration-500 ease-mass hover:text-ink"
           >
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
               <path d="M9.5 3.5 5 8l4.5 4.5" />
             </svg>
             Toutes les fiches
@@ -69,7 +111,17 @@ export default async function PageFiche({
               >
                 <span>Imprimer</span>
                 <span className="grid h-8 w-8 place-items-center rounded-full bg-white/12 transition-all duration-500 ease-mass group-hover:translate-x-1 group-hover:-translate-y-[1px] group-hover:scale-105">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
                     <path d="M4.5 6V2.5h7V6M4.5 12H3a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-1.5M4.5 10h7v3.5h-7z" />
                   </svg>
                 </span>
@@ -98,7 +150,13 @@ export default async function PageFiche({
       )}
 
       <Reveler delai={90}>
-        <FicheFormulaire fiche={fiche} technicienParDefaut={session.technicien} />
+        <FicheFormulaire
+          fiche={fiche}
+          technicienParDefaut={session.technicien}
+          clients={clients}
+          equipements={equipements}
+          historique={historique}
+        />
       </Reveler>
     </div>
   );

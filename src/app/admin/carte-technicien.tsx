@@ -70,9 +70,12 @@ export function CarteTechnicien({ technicien }: { technicien: TechnicienAvecStat
                 </form>
               ) : (
                 <div className="flex flex-wrap items-center gap-2.5">
-                  <h3 className="truncate font-display text-[1.2rem] font-semibold tracking-[-0.03em]">
+                  <Link
+                    href={`/admin/techniciens/${technicien.id}`}
+                    className="truncate font-display text-[1.2rem] font-semibold tracking-[-0.03em] underline-offset-4 transition-colors duration-500 ease-mass hover:text-brand hover:underline"
+                  >
                     {technicien.nom}
-                  </h3>
+                  </Link>
                   <button
                     type="button"
                     onClick={() => setRenomme(true)}

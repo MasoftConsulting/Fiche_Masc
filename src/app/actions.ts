@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase";
 import { lireFiche, prochainNumero } from "@/lib/fiches";
+import type { Fiche } from "@/lib/types";
 import { authentifierParCode } from "@/lib/techniciens";
 import {
   estCodeAdmin,
@@ -12,6 +13,7 @@ import {
   ouvrirSession,
   sessionConfiguree,
 } from "@/lib/session";
+import { journaliser, ACTIONS } from "@/lib/journal";
 import { TESTS_EFFECTUES, TYPES_INTERVENTION, type Resultat } from "@/lib/types";
 
 const TABLE = "fiches_intervention";
@@ -33,28 +35,40 @@ export async function connexion(
   const code = String(formData.get("code") ?? "").trim();
   if (!code) return { erreur: "Saisissez votre code d'accès." };
 
-  // Le code administrateur d'amorçage est vérifié en premier : il doit rester
-  // utilisable même quand la table `techniciens` est encore vide.
   if (estCodeAdmin(code)) {
-    await ouvrirSession({ id: null, technicien: "Administrateur", role: "admin" });
+    const session = {
+      id: null,
+      technicien: "Administrateur",
+      role: "admin" as const,
+    };
+    await ouvrirSession(session);
+    await journaliser(session, ACTIONS.SESSION_CONNEXION, {
+      details: { role: "admin", origine: "code_amorcage" },
+    });
   } else {
     const technicien = await authentifierParCode(code);
     if (!technicien) return { erreur: "Code d'accès inconnu, désactivé ou expiré." };
 
-    await ouvrirSession({
+    const session = {
       id: technicien.id,
       technicien: technicien.nom,
       role: technicien.role,
+    };
+    await ouvrirSession(session);
+    await journaliser(session, ACTIONS.SESSION_CONNEXION, {
+      details: { role: technicien.role },
     });
   }
 
   const suite = String(formData.get("suite") ?? "/fiches");
-  // On n'accepte qu'un chemin interne : une valeur du type "//exemple.com"
-  // ferait sortir l'utilisateur du site.
   redirect(suite.startsWith("/") && !suite.startsWith("//") ? suite : "/fiches");
 }
 
 export async function deconnexion() {
+  const session = await lireSession();
+  if (session) {
+    await journaliser(session, ACTIONS.SESSION_DECONNEXION);
+  }
   await fermerSession();
   redirect("/connexion");
 }
@@ -70,14 +84,58 @@ function coches(formData: FormData, prefixe: string, cles: readonly string[]): s
   return cles.filter((cle) => formData.get(`${prefixe}_${cle}`) === "on");
 }
 
-/** Une signature vide (canvas jamais touché) ne doit pas être enregistrée. */
 function signature(formData: FormData, cle: string): string | null {
   const valeur = String(formData.get(cle) ?? "");
   if (!valeur.startsWith("data:image/png;base64,")) return null;
-  // ~2 Mo de base64 : au-delà, le tracé est anormal et on préfère refuser
-  // plutôt que de faire échouer l'insertion côté Postgres.
   if (valeur.length > 2_000_000) return null;
   return valeur;
+}
+
+function champsModifies(
+  avant: Fiche,
+  valeurs: Record<string, unknown>,
+): string[] {
+  const suivis: (keyof Fiche)[] = [
+    "societe",
+    "adresse",
+    "contact",
+    "telephone",
+    "email",
+    "date_intervention",
+    "heure_arrivee",
+    "heure_depart",
+    "facturable",
+    "marque_modele",
+    "numero_serie",
+    "adresse_ip",
+    "localisation",
+    "compteur_nb",
+    "compteur_couleur",
+    "detail",
+    "resultat",
+    "commentaires",
+    "recommandations",
+    "client_nom",
+    "client_fonction",
+    "client_id",
+    "equipement_id",
+  ];
+
+  const modifies: string[] = [];
+  for (const cle of suivis) {
+    const a = (avant[cle] ?? null) as unknown;
+    const b = (valeurs[cle as string] ?? null) as unknown;
+    if (a !== b) modifies.push(cle as string);
+  }
+
+  if (JSON.stringify(avant.types ?? []) !== JSON.stringify(valeurs.types ?? [])) {
+    modifies.push("types");
+  }
+  if (JSON.stringify(avant.tests ?? []) !== JSON.stringify(valeurs.tests ?? [])) {
+    modifies.push("tests");
+  }
+
+  return modifies;
 }
 
 export async function enregistrerFiche(
@@ -96,25 +154,32 @@ export async function enregistrerFiche(
   const societe = texte(formData, "societe");
   if (!societe) return { erreur: "La société est obligatoire." };
 
-  // Modification : on revérifie côté serveur que la fiche appartient bien à
-  // celui qui l'enregistre. Le formulaire seul ne prouve rien.
-  if (id && session.role !== "admin") {
-    const existante = await lireFiche(id);
-    if (!existante) return { erreur: "Fiche introuvable." };
-    if (existante.technicien_id !== session.id) {
-      return { erreur: "Cette fiche appartient à un autre technicien." };
-    }
+  const ficheExistante = id ? await lireFiche(id) : null;
+
+  if (id && !ficheExistante) return { erreur: "Fiche introuvable." };
+
+  if (
+    id &&
+    ficheExistante &&
+    session.role !== "admin" &&
+    ficheExistante.technicien_id !== session.id
+  ) {
+    return { erreur: "Cette fiche appartient à un autre technicien." };
   }
 
   const resultat = texte(formData, "resultat") as Resultat | null;
   const signatureClient = signature(formData, "signature_client");
   const signatureTechnicien = signature(formData, "signature_technicien");
 
-  // Une fiche n'est « signée » que lorsque le client a validé : c'est ce que
-  // matérialise le « Validation client requise » du document papier.
   const statut = signatureClient ? "signee" : "brouillon";
 
   const valeurs = {
+    // Références vers les référentiels. Nullables : le technicien peut
+    // saisir une intervention ponctuelle sans sélectionner de client ou
+    // d'équipement.
+    client_id: texte(formData, "client_id"),
+    equipement_id: texte(formData, "equipement_id"),
+
     date_intervention: texte(formData, "date_intervention"),
     heure_arrivee: texte(formData, "heure_arrivee"),
     heure_depart: texte(formData, "heure_depart"),
@@ -161,8 +226,6 @@ export async function enregistrerFiche(
   let identifiant = id;
 
   if (id) {
-    // `technicien_id` n'est jamais réécrit à la modification : la fiche reste
-    // attribuée à celui qui l'a ouverte, même relue par un administrateur.
     const { error } = await supabase.from(TABLE).update(valeurs).eq("id", id);
     if (error) return { erreur: `Enregistrement impossible : ${error.message}` };
   } else {
@@ -174,13 +237,48 @@ export async function enregistrerFiche(
       .single();
 
     if (error) {
-      // Collision sur la numérotation : deux fiches créées en même temps.
       if (error.code === "23505") {
         return { erreur: "Ce numéro de fiche existe déjà. Rechargez la page pour obtenir le suivant." };
       }
       return { erreur: `Création impossible : ${error.message}` };
     }
     identifiant = (data as { id: string }).id;
+
+    await journaliser(session, ACTIONS.FICHE_CREATION, {
+      tableCible: TABLE,
+      ligneId: identifiant ?? undefined,
+      details: { numero, societe: valeurs.societe },
+    });
+
+    if (statut === "signee") {
+      await journaliser(session, ACTIONS.FICHE_SIGNATURE, {
+        tableCible: TABLE,
+        ligneId: identifiant ?? undefined,
+        details: { numero, client_nom: valeurs.client_nom },
+      });
+    }
+  }
+
+  if (id && ficheExistante) {
+    const vientEtreSignee =
+      ficheExistante.statut !== "signee" && statut === "signee";
+
+    if (vientEtreSignee) {
+      await journaliser(session, ACTIONS.FICHE_SIGNATURE, {
+        tableCible: TABLE,
+        ligneId: id,
+        details: { numero: ficheExistante.numero, client_nom: valeurs.client_nom },
+      });
+    }
+
+    const modifies = champsModifies(ficheExistante, valeurs);
+    if (modifies.length > 0) {
+      await journaliser(session, ACTIONS.FICHE_MODIFICATION, {
+        tableCible: TABLE,
+        ligneId: id,
+        details: { numero: ficheExistante.numero, champs: modifies },
+      });
+    }
   }
 
   revalidatePath("/fiches");
@@ -196,8 +294,18 @@ export async function supprimerFiche(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   if (!id) redirect("/fiches");
 
+  const avant = await lireFiche(id);
+
   const supabase = createAdminClient();
   if (supabase) await supabase.from(TABLE).delete().eq("id", id);
+
+  if (avant) {
+    await journaliser(session, ACTIONS.FICHE_SUPPRESSION, {
+      tableCible: TABLE,
+      ligneId: id,
+      details: { numero: avant.numero, societe: avant.societe },
+    });
+  }
 
   revalidatePath("/fiches");
   revalidatePath("/admin");
