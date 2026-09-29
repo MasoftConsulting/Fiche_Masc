@@ -4,8 +4,10 @@ import { Reveler } from "@/components/reveler";
 import { lireSessionAdmin } from "@/lib/session";
 import { lireClient } from "@/lib/clients";
 import { listerEquipements } from "@/lib/equipements";
+import { listerContacts } from "@/lib/contacts";
 import { initiales } from "@/lib/format";
 import { EditionClient } from "./edition-client";
+import { GestionContacts } from "./gestion-contacts";
 import { GestionEquipements } from "./gestion-equipements";
 
 export const dynamic = "force-dynamic";
@@ -15,18 +17,24 @@ export default async function PageClient({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ equipement_supprime?: string }>;
+  searchParams: Promise<{
+    equipement_supprime?: string;
+    contact_supprime?: string;
+  }>;
 }) {
   const session = await lireSessionAdmin();
   if (!session) redirect("/fiches?erreur=droits");
 
   const { id } = await params;
-  const { equipement_supprime } = await searchParams;
+  const { equipement_supprime, contact_supprime } = await searchParams;
 
   const client = await lireClient(id);
   if (!client) notFound();
 
-  const equipements = await listerEquipements(id);
+  const [equipements, contacts] = await Promise.all([
+    listerEquipements(id),
+    listerContacts(id),
+  ]);
 
   return (
     <div className="space-y-10">
@@ -78,8 +86,18 @@ export default async function PageClient({
         </p>
       )}
 
+      {contact_supprime && (
+        <p className="rounded-2xl bg-jade/10 px-5 py-3.5 text-[0.85rem] text-jade">
+          Contact supprimé. Les fiches déjà remplies conservent le nom qu&apos;elles portaient.
+        </p>
+      )}
+
       <Reveler delai={80}>
         <EditionClient client={client} />
+      </Reveler>
+
+      <Reveler delai={120}>
+        <GestionContacts clientId={client.id} contacts={contacts} />
       </Reveler>
 
       <Reveler delai={160}>

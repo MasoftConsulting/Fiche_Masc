@@ -13,7 +13,7 @@ import { jwtVerify } from "jose";
 
 // /hors-ligne est mise en cache par le service worker à l'installation, avant
 // toute session : elle doit rester joignable sans cookie.
-const PUBLIC = ["/connexion", "/hors-ligne"];
+const PUBLIC = ["/connexion", "/hors-ligne", "/verification"];
 const RESERVE_ADMIN = ["/admin"];
 
 export default async function proxy(request: NextRequest) {

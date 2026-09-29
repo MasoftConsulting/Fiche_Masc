@@ -224,6 +224,10 @@ export type FicheResume = {
   statut: string;
   client_id: string;
   created_at: string;
+  /** Auteur de la fiche, pour savoir si l'utilisateur courant peut l'ouvrir. */
+  technicien_id: string | null;
+  /** Nom figé du technicien, tel qu'affiché sur la fiche. */
+  technicien: string | null;
 };
 
 /**
@@ -248,7 +252,9 @@ export async function historiqueParClient(
 
   const { data, error } = await supabase
     .from(TABLE)
-    .select("id, numero, date_intervention, resultat, statut, client_id, created_at")
+    .select(
+      "id, numero, date_intervention, resultat, statut, client_id, created_at, technicien_id, technicien",
+    )
     .in("client_id", clientIds)
     .order("created_at", { ascending: false });
 

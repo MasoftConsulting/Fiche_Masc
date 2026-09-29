@@ -1,0 +1,6 @@
+# Fichiers de travail : inutiles au build, pas de raison de les téléverser.
+SKILL.md
+SKILL2.md
+two.png
+*.pdf
+supabase/

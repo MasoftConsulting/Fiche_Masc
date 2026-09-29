@@ -5,6 +5,8 @@ import { Reveler } from "@/components/reveler";
 import { prochainNumero, historiqueParClient } from "@/lib/fiches";
 import { listerClients } from "@/lib/clients";
 import { listerEquipements } from "@/lib/equipements";
+import { listerContacts } from "@/lib/contacts";
+import { listerTechniciens } from "@/lib/techniciens";
 import { lireSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -13,18 +15,25 @@ export default async function PageNouvelleFiche() {
   const session = await lireSession();
   if (!session) redirect("/connexion");
 
-  const [numero, clients, equipements] = await Promise.all([
+  // Seul l'administrateur peut créer une fiche. Un technicien y accède par
+  // affectation depuis son registre.
+  if (session.role !== "admin") redirect("/fiches");
+
+  const [numero, clients, equipements, contacts, techniciens] = await Promise.all([
     prochainNumero(),
     listerClients(),
     listerEquipements(),
+    listerContacts(),
+    listerTechniciens(),
   ]);
 
-  // Historique groupé par client — une seule requête pour tous les clients
-  // susceptibles d'être sélectionnés dans le formulaire.
   const historique = await historiqueParClient(
     clients.map((c) => c.id),
     5,
   );
+
+  // Seuls les comptes en base peuvent être affectés.
+  const affectables = techniciens.filter((t) => t.actif);
 
   return (
     <div className="space-y-8">
@@ -59,7 +68,14 @@ export default async function PageNouvelleFiche() {
           technicienParDefaut={session.technicien}
           clients={clients}
           equipements={equipements}
+          contacts={contacts}
           historique={historique}
+          techniciens={affectables}
+          sessionUtilisateur={{
+            id: session.id,
+            role: session.role,
+            technicien: session.technicien,
+          }}
         />
       </Reveler>
     </div>

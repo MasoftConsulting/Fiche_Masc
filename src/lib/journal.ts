@@ -17,6 +17,7 @@ export const ACTIONS = {
   FICHE_MODIFICATION: "fiche.modification",
   FICHE_SIGNATURE: "fiche.signature",
   FICHE_SUPPRESSION: "fiche.suppression",
+  FICHE_REOUVERTURE: "fiche.reouverture",
   // Techniciens
   TECHNICIEN_CREATION: "technicien.creation",
   TECHNICIEN_MODIFICATION: "technicien.modification",
@@ -32,6 +33,10 @@ export const ACTIONS = {
   EQUIPEMENT_CREATION: "equipement.creation",
   EQUIPEMENT_MODIFICATION: "equipement.modification",
   EQUIPEMENT_SUPPRESSION: "equipement.suppression",
+  // Contacts
+  CONTACT_CREATION: "contact.creation",
+  CONTACT_MODIFICATION: "contact.modification",
+  CONTACT_SUPPRESSION: "contact.suppression",
   // Sessions
   SESSION_CONNEXION: "session.connexion",
   SESSION_DECONNEXION: "session.deconnexion",
@@ -50,6 +55,7 @@ export const LABELS_ACTION: Record<ActionJournal, string> = {
   [ACTIONS.FICHE_MODIFICATION]: "Fiche modifiée",
   [ACTIONS.FICHE_SIGNATURE]: "Fiche signée",
   [ACTIONS.FICHE_SUPPRESSION]: "Fiche supprimée",
+  [ACTIONS.FICHE_REOUVERTURE]: "Fiche rouverte",
   [ACTIONS.TECHNICIEN_CREATION]: "Technicien créé",
   [ACTIONS.TECHNICIEN_MODIFICATION]: "Technicien modifié",
   [ACTIONS.TECHNICIEN_DESACTIVATION]: "Technicien désactivé",
@@ -62,12 +68,17 @@ export const LABELS_ACTION: Record<ActionJournal, string> = {
   [ACTIONS.EQUIPEMENT_CREATION]: "Équipement créé",
   [ACTIONS.EQUIPEMENT_MODIFICATION]: "Équipement modifié",
   [ACTIONS.EQUIPEMENT_SUPPRESSION]: "Équipement supprimé",
+  [ACTIONS.CONTACT_CREATION]: "Contact créé",
+  [ACTIONS.CONTACT_MODIFICATION]: "Contact modifié",
+  [ACTIONS.CONTACT_SUPPRESSION]: "Contact supprimé",
   [ACTIONS.SESSION_CONNEXION]: "Connexion",
   [ACTIONS.SESSION_DECONNEXION]: "Déconnexion",
 };
 
 /** Ton visuel associé à chaque action, pour colorer la puce dans la liste. */
-export function tonAction(action: string): "jade" | "rouille" | "amber" | "neutre" {
+export function tonAction(
+  action: string,
+): "jade" | "rouille" | "amber" | "neutre" {
   if (action.endsWith(".suppression")) return "rouille";
   if (action.endsWith(".creation")) return "jade";
   if (
@@ -79,6 +90,7 @@ export function tonAction(action: string): "jade" | "rouille" | "amber" | "neutr
   if (
     action === ACTIONS.TECHNICIEN_DESACTIVATION ||
     action === ACTIONS.FICHE_MODIFICATION ||
+    action === ACTIONS.FICHE_REOUVERTURE ||
     action.endsWith(".modification")
   ) {
     return "amber";
@@ -116,10 +128,6 @@ export type OptionsJournal = {
  * Ne jette jamais : si l'écriture échoue, on log côté serveur et on rend la
  * main. Un journal secondaire ne doit pas faire tomber une action métier qui,
  * elle, a réussi.
- *
- * L'appelant fournit la session pour identifier l'auteur, et peut fournir
- * `acteurNom` s'il connaît une valeur plus précise (par exemple le technicien
- * tel qu'il était avant renommage).
  */
 export async function journaliser(
   session: Session,
@@ -148,20 +156,12 @@ export async function journaliser(
       console.error("[journal] journaliser", error.message);
     }
   } catch (e) {
-    // Filet de sécurité : une exception ici ne doit jamais remonter.
     console.error("[journal] journaliser — exception", e);
   }
 }
 
 /* ---------------------------------------------------------------- lecture */
 
-/**
- * Liste les entrées du journal, la plus récente en tête.
- *
- * Lecture unique avec les filtres appliqués côté PostgREST — la table est
- * petite (une ligne par action utilisateur), le coût d'un `order by created_at`
- * indexé est négligeable même à plusieurs milliers de lignes.
- */
 export async function listerJournal(
   options: OptionsJournal = {},
 ): Promise<EntreeJournal[]> {
@@ -188,12 +188,6 @@ export async function listerJournal(
   return (data ?? []) as EntreeJournal[];
 }
 
-/**
- * Répartition des entrées par type d'action, sur les 30 derniers jours.
- *
- * Sert au bandeau de la page /admin/journal. Une seule requête agrégée plutôt
- * qu'un count par action : la table reste petite, la lecture est instantanée.
- */
 export async function compterParAction(
   jours = 30,
 ): Promise<Record<string, number>> {

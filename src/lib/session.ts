@@ -58,6 +58,23 @@ export function hacherCode(code: string) {
   return createHmac("sha256", cle).update(code.trim()).digest("hex");
 }
 
+/**
+ * Hash d'un code MFA (6 chiffres).
+ *
+ * On préfixe avec "mfa:" pour garantir qu'un code MFA ne peut jamais
+ * produire le même hash qu'un code d'accès technicien (même secret HMAC,
+ * mais chaînes d'entrée différentes). Cela évite toute confusion entre les
+ * deux systèmes.
+ *
+ * Déterministe : la vérification se fait en une seule requête indexée sur
+ * `code_hash`.
+ */
+export function hacherCodeMfa(code: string) {
+  const cle = secret();
+  if (!cle) throw new Error("SESSION_SECRET manquant ou trop court (32 caractères minimum)");
+  return createHmac("sha256", cle).update(`mfa:${code.trim()}`).digest("hex");
+}
+
 /** Comparaison en temps constant (évite l'attaque par chronométrage). */
 function memeCode(a: string, b: string) {
   const ta = Buffer.from(a);
@@ -120,4 +137,72 @@ export async function lireSessionAdmin(): Promise<Session | null> {
 
 export async function fermerSession() {
   (await cookies()).delete(COOKIE);
+}
+
+/* --------------------------------------------------- pré-session MFA */
+
+/**
+ * Cookie de pré-session, distinct du cookie de session définitif.
+ *
+ * Entre la saisie du code d'accès et la validation du code MFA, l'utilisateur
+ * n'est PAS authentifié : il ne peut accéder à aucune page protégée. Ce
+ * cookie sert uniquement à identifier qui est en train de finaliser sa
+ * connexion, pour savoir à qui le code à 6 chiffres a été envoyé.
+ *
+ * Durée courte (10 minutes) : si l'utilisateur ne saisit pas son code dans
+ * ce délai, il repart de la page de connexion.
+ */
+const COOKIE_EN_ATTENTE = "masc_fiche_attente";
+const DUREE_EN_ATTENTE_MINUTES = 10;
+
+export type SessionEnAttente = {
+  id: string | null;
+  technicien: string;
+  role: "technicien" | "admin";
+  /** Adresse email à laquelle le code a été envoyé. */
+  email: string;
+};
+
+export async function ouvrirSessionEnAttente(s: SessionEnAttente) {
+  const cle = secret();
+  if (!cle) throw new Error("SESSION_SECRET manquant");
+
+  const jeton = await new SignJWT({ ...s })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(`${DUREE_EN_ATTENTE_MINUTES}m`)
+    .sign(new TextEncoder().encode(cle));
+
+  const store = await cookies();
+  store.set(COOKIE_EN_ATTENTE, jeton, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: DUREE_EN_ATTENTE_MINUTES * 60,
+  });
+}
+
+export async function lireSessionEnAttente(): Promise<SessionEnAttente | null> {
+  const cle = secret();
+  if (!cle) return null;
+
+  const jeton = (await cookies()).get(COOKIE_EN_ATTENTE)?.value;
+  if (!jeton) return null;
+
+  try {
+    const { payload } = await jwtVerify(jeton, new TextEncoder().encode(cle));
+    return {
+      id: payload.id ? String(payload.id) : null,
+      technicien: String(payload.technicien ?? ""),
+      role: payload.role === "admin" ? "admin" : "technicien",
+      email: String(payload.email ?? ""),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function fermerSessionEnAttente() {
+  (await cookies()).delete(COOKIE_EN_ATTENTE);
 }
