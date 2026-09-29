@@ -232,6 +232,13 @@ export async function enregistrerFiche(
     return { erreur: "Cette fiche appartient à un autre technicien." };
   }
 
+  // Une fiche signée par le client fait foi : seul un administrateur peut
+  // encore la modifier. Revérifié ici car la page ne fait que masquer le
+  // bouton, et une Server Action reste appelable directement.
+  if (ficheExistante?.statut === "signee" && session.role !== "admin") {
+    return { erreur: "Cette fiche est signée : seul un administrateur peut la modifier." };
+  }
+
   const resultat = texte(formData, "resultat") as Resultat | null;
   const signatureClient = signature(formData, "signature_client");
   const signatureTechnicien = signature(formData, "signature_technicien");
