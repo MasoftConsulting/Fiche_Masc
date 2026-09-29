@@ -27,6 +27,8 @@ export default async function proxy(request: NextRequest) {
   if (jeton && secret && secret.length >= 32) {
     try {
       const { payload } = await jwtVerify(jeton, new TextEncoder().encode(secret));
+      // Session ouverte sans double authentification : traitée comme anonyme.
+      if (payload.mfa !== true) throw new Error("mfa");
 
       if (RESERVE_ADMIN.some((p) => pathname.startsWith(p)) && payload.role !== "admin") {
         const refus = request.nextUrl.clone();

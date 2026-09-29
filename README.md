@@ -24,6 +24,10 @@ npm run dev                        # http://localhost:3000
 | `SUPABASE_SERVICE_ROLE_KEY` | Clé service_role — **serveur uniquement** |
 | `CODE_ADMIN` | Code d'accès administrateur (code d'amorçage) |
 | `SESSION_SECRET` | Signe le cookie de session **et** les empreintes des codes, 32 caractères minimum |
+| `ADMIN_EMAIL` | Reçoit le code de connexion de l'administrateur d'amorçage |
+| `SMTP_HOST`, `SMTP_PORT` | Serveur SMTP d'envoi des codes de connexion (465 = TLS implicite, 587 = STARTTLS) |
+| `SMTP_USER`, `SMTP_PASSWORD` | Identifiants SMTP |
+| `SMTP_FROM` | Expéditeur affiché (vide : `SMTP_USER`) |
 
 ```bash
 openssl rand -base64 36   # pour SESSION_SECRET
@@ -70,8 +74,14 @@ elles restent visibles pour l'administrateur sous le filtre **Non attribuées**.
 
 ## 4. Accès
 
-Un seul champ à la connexion : **le code**. Il identifie son porteur, donc il
-renseigne seul le champ « Technicien » des fiches.
+La connexion se fait en deux étapes :
+
+1. **le code d'accès**, qui identifie son porteur et renseigne donc seul le
+   champ « Technicien » des fiches ;
+2. **un code à 6 chiffres reçu par e-mail** (double authentification), valable
+   10 minutes, à usage unique, 5 essais maximum. Il est envoyé à l'adresse du
+   technicien (obligatoire, saisie dans `/admin`) ou à `ADMIN_EMAIL` pour le
+   code d'amorçage. Table `codes_mfa`.
 
 | | Voit | Peut |
 | --- | --- | --- |

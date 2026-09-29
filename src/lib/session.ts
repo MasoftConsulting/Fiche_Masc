@@ -59,7 +59,7 @@ export function hacherCode(code: string) {
 }
 
 /** Comparaison en temps constant (évite l'attaque par chronométrage). */
-function memeCode(a: string, b: string) {
+export function memeCode(a: string, b: string) {
   const ta = Buffer.from(a);
   const tb = Buffer.from(b);
   if (ta.length !== tb.length) return false;
@@ -76,7 +76,10 @@ export async function ouvrirSession(session: Session) {
   const cle = secret();
   if (!cle) throw new Error("SESSION_SECRET manquant ou trop court (32 caractères minimum)");
 
-  const jeton = await new SignJWT({ ...session })
+  // `mfa` atteste que la double authentification a eu lieu. Le proxy et
+  // lireSession() refusent tout jeton qui ne le porte pas : les sessions
+  // ouvertes avant la mise en place du code par e-mail sont donc invalidées.
+  const jeton = await new SignJWT({ ...session, mfa: true })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${DUREE_JOURS}d`)
@@ -101,6 +104,7 @@ export async function lireSession(): Promise<Session | null> {
 
   try {
     const { payload } = await jwtVerify(jeton, new TextEncoder().encode(cle));
+    if (payload.mfa !== true) return null;
     return {
       id: payload.id ? String(payload.id) : null,
       technicien: String(payload.technicien ?? ""),
@@ -120,4 +124,80 @@ export async function lireSessionAdmin(): Promise<Session | null> {
 
 export async function fermerSession() {
   (await cookies()).delete(COOKIE);
+}
+
+/* ------------------------------------------------ double authentification */
+
+/**
+ * Entre la saisie du code d'accès et celle du code reçu par e-mail, l'identité
+ * en attente tient dans un second cookie, de courte durée.
+ *
+ * Il est signé avec une clé dérivée, distincte de celle des sessions : recopié
+ * dans le cookie de session, il serait rejeté. Sans cela, le simple fait de
+ * connaître le code d'accès suffirait à fabriquer une session.
+ */
+
+const COOKIE_DEFI = "masc_fiche_defi";
+export const DUREE_DEFI_MINUTES = 10;
+
+export type Defi = {
+  /** Ligne de `codes_mfa` à laquelle le code saisi sera comparé. */
+  defiId: string;
+  session: Session;
+  email: string;
+  suite: string;
+};
+
+function cleDefi() {
+  const cle = secret();
+  return cle ? new TextEncoder().encode(`${cle}:double-authentification`) : null;
+}
+
+export async function ouvrirDefi(defi: Defi) {
+  const cle = cleDefi();
+  if (!cle) throw new Error("SESSION_SECRET manquant ou trop court (32 caractères minimum)");
+
+  const jeton = await new SignJWT({ ...defi })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(`${DUREE_DEFI_MINUTES}m`)
+    .sign(cle);
+
+  (await cookies()).set(COOKIE_DEFI, jeton, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: DUREE_DEFI_MINUTES * 60,
+  });
+}
+
+export async function lireDefi(): Promise<Defi | null> {
+  const cle = cleDefi();
+  if (!cle) return null;
+
+  const jeton = (await cookies()).get(COOKIE_DEFI)?.value;
+  if (!jeton) return null;
+
+  try {
+    const { payload } = await jwtVerify(jeton, cle);
+    const session = payload.session as Partial<Session> | undefined;
+    if (!payload.defiId || !payload.email || !session) return null;
+    return {
+      defiId: String(payload.defiId),
+      email: String(payload.email),
+      suite: String(payload.suite ?? "/fiches"),
+      session: {
+        id: session.id ? String(session.id) : null,
+        technicien: String(session.technicien ?? ""),
+        role: session.role === "admin" ? "admin" : "technicien",
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function fermerDefi() {
+  (await cookies()).delete(COOKIE_DEFI);
 }

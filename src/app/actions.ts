@@ -5,13 +5,18 @@ import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase";
 import { lireFiche, prochainNumero } from "@/lib/fiches";
 import type { Fiche } from "@/lib/types";
-import { authentifierParCode } from "@/lib/techniciens";
+import { authentifierParCode, lireTechnicien } from "@/lib/techniciens";
+import { emettreCode, verifierCode } from "@/lib/double-authentification";
 import {
   estCodeAdmin,
+  fermerDefi,
   fermerSession,
+  lireDefi,
   lireSession,
+  ouvrirDefi,
   ouvrirSession,
   sessionConfiguree,
+  type Session,
 } from "@/lib/session";
 import { journaliser, ACTIONS } from "@/lib/journal";
 import { TESTS_EFFECTUES, TYPES_INTERVENTION, type Resultat } from "@/lib/types";
@@ -35,33 +40,93 @@ export async function connexion(
   const code = String(formData.get("code") ?? "").trim();
   if (!code) return { erreur: "Saisissez votre code d'accès." };
 
+  // Première étape : le code d'accès désigne la personne. La session n'est
+  // pas encore ouverte, elle attend le code envoyé par e-mail.
+  let session: Session;
+  let email: string | null;
+
   if (estCodeAdmin(code)) {
-    const session = {
-      id: null,
-      technicien: "Administrateur",
-      role: "admin" as const,
-    };
-    await ouvrirSession(session);
-    await journaliser(session, ACTIONS.SESSION_CONNEXION, {
-      details: { role: "admin", origine: "code_amorcage" },
-    });
+    session = { id: null, technicien: "Administrateur", role: "admin" };
+    email = process.env.ADMIN_EMAIL?.trim() || null;
+    if (!email) {
+      return { erreur: "Adresse de l'administrateur non configurée (ADMIN_EMAIL)." };
+    }
   } else {
     const technicien = await authentifierParCode(code);
     if (!technicien) return { erreur: "Code d'accès inconnu, désactivé ou expiré." };
 
-    const session = {
-      id: technicien.id,
-      technicien: technicien.nom,
-      role: technicien.role,
-    };
-    await ouvrirSession(session);
-    await journaliser(session, ACTIONS.SESSION_CONNEXION, {
-      details: { role: technicien.role },
-    });
+    session = { id: technicien.id, technicien: technicien.nom, role: technicien.role };
+    email = technicien.email;
+    if (!email) {
+      return {
+        erreur:
+          "Aucune adresse e-mail n'est associée à votre compte. Demandez à l'administrateur de la renseigner.",
+      };
+    }
   }
 
+  const envoi = await emettreCode(email, session.id, session.technicien);
+  if ("erreur" in envoi) return { erreur: envoi.erreur };
+
   const suite = String(formData.get("suite") ?? "/fiches");
-  redirect(suite.startsWith("/") && !suite.startsWith("//") ? suite : "/fiches");
+  await ouvrirDefi({
+    defiId: envoi.defiId,
+    session,
+    email,
+    suite: suite.startsWith("/") && !suite.startsWith("//") ? suite : "/fiches",
+  });
+  redirect("/connexion/verification");
+}
+
+export async function verifierConnexion(
+  _etat: EtatFormulaire,
+  formData: FormData,
+): Promise<EtatFormulaire> {
+  const defi = await lireDefi();
+  if (!defi) redirect("/connexion?expire=1");
+
+  const code = String(formData.get("code") ?? "").replace(/\s/g, "");
+  if (!/^\d{6}$/.test(code)) return { erreur: "Saisissez les 6 chiffres reçus par e-mail." };
+
+  const resultat = await verifierCode(defi.defiId, code);
+  if ("erreur" in resultat) return { erreur: resultat.erreur };
+
+  // Le compte a pu être désactivé pendant les quelques minutes d'attente.
+  if (defi.session.id) {
+    const technicien = await lireTechnicien(defi.session.id);
+    if (!technicien?.actif) {
+      await fermerDefi();
+      return { erreur: "Ce compte a été désactivé." };
+    }
+  }
+
+  await fermerDefi();
+  await ouvrirSession(defi.session);
+  await journaliser(defi.session, ACTIONS.SESSION_CONNEXION, {
+    details: {
+      role: defi.session.role,
+      double_authentification: true,
+      ...(defi.session.id ? {} : { origine: "code_amorcage" }),
+    },
+  });
+
+  redirect(defi.suite);
+}
+
+export async function renvoyerCode(): Promise<EtatFormulaire> {
+  const defi = await lireDefi();
+  if (!defi) redirect("/connexion?expire=1");
+
+  const envoi = await emettreCode(defi.email, defi.session.id, defi.session.technicien);
+  if ("erreur" in envoi) return { erreur: envoi.erreur };
+
+  await ouvrirDefi({ ...defi, defiId: envoi.defiId });
+  return { message: "Un nouveau code vient d'être envoyé." };
+}
+
+export async function annulerConnexion() {
+  await fermerDefi();
+  redirect("/connexion");
 }
 
 export async function deconnexion() {

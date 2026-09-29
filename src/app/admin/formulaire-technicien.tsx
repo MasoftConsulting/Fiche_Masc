@@ -59,6 +59,21 @@ export function FormulaireTechnicien() {
             </label>
           </div>
 
+          <label className="block">
+            <span className="etiquette">Adresse e-mail</span>
+            <input
+              name="email"
+              type="email"
+              className="champ"
+              placeholder="prenom.nom@masoftconsulting.com"
+              required
+              autoComplete="off"
+            />
+            <span className="mt-1.5 block text-[0.72rem] text-ink-faint">
+              Reçoit le code à 6 chiffres demandé à chaque connexion.
+            </span>
+          </label>
+
           <div>
             <label className="flex cursor-pointer items-center gap-3">
               <input

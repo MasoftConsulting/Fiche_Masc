@@ -104,6 +104,7 @@ export default async function PageTechnicien({
           technicien={{
             id: technicien.id,
             nom: technicien.nom,
+            email: technicien.email,
             role: technicien.role,
             actif: technicien.actif,
             total: technicien.total,
