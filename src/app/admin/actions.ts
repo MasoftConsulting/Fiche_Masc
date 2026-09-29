@@ -41,6 +41,11 @@ export async function creerTechnicienAction(
   const nom = String(formData.get("nom") ?? "").trim();
   if (nom.length < 2) return { erreur: "Indiquez le nom du technicien." };
 
+  // Email requis pour la double authentification. Optionnel pour l'instant :
+  // le temps de la mise en place, un technicien peut être créé sans email.
+  // Il devra être renseigné avant que le MFA ne soit activé.
+  const email = String(formData.get("email") ?? "").trim() || null;
+
   const role = formData.get("role") === "admin" ? "admin" : "technicien";
   const codeImpose = String(formData.get("code") ?? "").trim();
 
@@ -51,13 +56,17 @@ export async function creerTechnicienAction(
     return { erreur: "Ce code est déjà celui de l'administrateur." };
   }
 
-  const resultat = await creerTechnicien(nom, role, codeImpose || undefined);
+  const resultat = await creerTechnicien(nom, email, role, codeImpose || undefined);
   if ("erreur" in resultat) return { erreur: resultat.erreur };
 
   await journaliser(session, ACTIONS.TECHNICIEN_CREATION, {
     tableCible: "techniciens",
     ligneId: resultat.technicien.id,
-    details: { nom: resultat.technicien.nom, role: resultat.technicien.role },
+    details: {
+      nom: resultat.technicien.nom,
+      email: resultat.technicien.email,
+      role: resultat.technicien.role,
+    },
   });
 
   revalidatePath("/admin");
@@ -110,8 +119,6 @@ export async function basculerActifAction(formData: FormData) {
     redirect(`${retour}?erreur=dernier-admin`);
   }
 
-  // Lire le nom AVANT modification : on veut le nom tel qu'il était au moment
-  // de l'action, pas après.
   const technicien = await lireTechnicien(id);
 
   await modifierTechnicien(id, { actif });
@@ -146,8 +153,6 @@ export async function renommerTechnicienAction(formData: FormData) {
   const avant = await lireTechnicien(id);
   if (!avant) redirect("/admin");
 
-  // Rien à faire si le nom n'a pas changé : évite de polluer le journal avec
-  // un "modifié" alors qu'aucun champ n'a bougé.
   if (avant.nom === nom) {
     revalidatePath("/admin");
     revalidatePath(`/admin/techniciens/${id}`);
@@ -216,6 +221,8 @@ export async function enregistrerTechnicienAction(
   const nom = String(formData.get("nom") ?? "").trim();
   if (nom.length < 2) return { erreur: "Le nom doit contenir au moins 2 caractères." };
 
+  const emailDemande = String(formData.get("email") ?? "").trim() || null;
+
   const roleDemande = formData.get("role") === "admin" ? "admin" : "technicien";
   const actifDemande = formData.get("actif") === "1";
 
@@ -242,16 +249,18 @@ export async function enregistrerTechnicienAction(
 
   const resultat = await modifierTechnicien(id, {
     nom,
+    email: emailDemande,
     role: roleDemande,
     actif: actifDemande,
   });
   if ("erreur" in resultat) return { erreur: resultat.erreur };
 
-  // On ne journalise que si quelque chose a réellement changé. Un
-  // enregistrement sans modification (double-clic, retour puis re-soumission)
-  // ne doit pas apparaître dans l'historique.
+  // On ne journalise que si quelque chose a réellement changé.
   const changements: Record<string, { avant: unknown; apres: unknown }> = {};
   if (avant.nom !== nom) changements.nom = { avant: avant.nom, apres: nom };
+  if (avant.email !== emailDemande) {
+    changements.email = { avant: avant.email, apres: emailDemande };
+  }
   if (avant.role !== roleDemande) {
     changements.role = { avant: avant.role, apres: roleDemande };
   }
@@ -288,8 +297,6 @@ export async function supprimerTechnicienAction(formData: FormData) {
     redirect(`/admin/techniciens/${id}?erreur=dernier-admin`);
   }
 
-  // On figera le nom dans le journal : après suppression, cette valeur sera
-  // la seule trace du compte.
   const avant = await lireTechnicien(id);
 
   await supprimerTechnicien(id);

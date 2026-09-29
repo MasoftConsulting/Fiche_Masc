@@ -42,12 +42,17 @@ export function FormulaireTechnicien() {
           </div>
         </header>
 
-        {/* `key` remet le formulaire à zéro après chaque création réussie. */}
         <form action={action} key={etat.code ?? "vierge"} className="space-y-5">
           <div className="grid gap-5 sm:grid-cols-[2fr_1fr]">
             <label className="block">
               <span className="etiquette">Nom du technicien</span>
-              <input name="nom" className="champ" placeholder="M. Raphael" required autoComplete="off" />
+              <input
+                name="nom"
+                className="champ"
+                placeholder="M. Raphael"
+                required
+                autoComplete="off"
+              />
             </label>
 
             <label className="block">
@@ -58,6 +63,22 @@ export function FormulaireTechnicien() {
               </select>
             </label>
           </div>
+
+          <label className="block">
+            <span className="etiquette">Email</span>
+            <input
+              name="email"
+              type="email"
+              className="champ"
+              placeholder="technicien@masoft.tg"
+              autoComplete="off"
+            />
+            <p className="mt-2 text-[0.72rem] text-ink-soft">
+              Requis pour la double authentification. Un code de vérification
+              y sera envoyé à chaque connexion. Peut être laissé vide pour
+              l&apos;instant, à compléter avant l&apos;activation du MFA.
+            </p>
+          </label>
 
           <div>
             <label className="flex cursor-pointer items-center gap-3">

@@ -8,13 +8,20 @@ import { supprimerFiche } from "@/app/actions";
 import { lireFiche, historiqueParClient } from "@/lib/fiches";
 import { listerClients } from "@/lib/clients";
 import { listerEquipements } from "@/lib/equipements";
+import { listerContacts } from "@/lib/contacts";
+import { listerTechniciens } from "@/lib/techniciens";
 import { lireSession } from "@/lib/session";
 import { formaterDateHeure } from "@/lib/format";
+import { BoutonRouvrir } from "./bouton-rouvrir";
 
 export const dynamic = "force-dynamic";
 
 type Params = Promise<{ id: string }>;
-type Search = Promise<{ enregistre?: string }>;
+type Search = Promise<{
+  enregistre?: string;
+  rouverte?: string;
+  erreur?: string;
+}>;
 
 export async function generateMetadata({
   params,
@@ -30,6 +37,14 @@ export async function generateMetadata({
   };
 }
 
+const MESSAGES_ERREUR: Record<string, string> = {
+  "deja-ouvert":
+    "Cette fiche n'est pas signée — inutile de la rouvrir.",
+  config: "Impossible de rouvrir : Supabase n'est pas configuré.",
+  rouvrir:
+    "La réouverture a échoué. Réessayez, et prévenez l'administrateur si le problème persiste.",
+};
+
 export default async function PageFiche({
   params,
   searchParams,
@@ -41,26 +56,28 @@ export default async function PageFiche({
   if (!session) redirect("/connexion");
 
   const { id } = await params;
-  const { enregistre } = await searchParams;
+  const { enregistre, rouverte, erreur } = await searchParams;
 
-  const [fiche, clients, equipements] = await Promise.all([
+  const [fiche, clients, equipements, contacts, techniciens] = await Promise.all([
     lireFiche(id),
     listerClients(),
     listerEquipements(),
+    listerContacts(),
+    listerTechniciens(),
   ]);
 
   if (!fiche) notFound();
   if (session.role !== "admin" && fiche.technicien_id !== session.id) notFound();
 
-  // Historique par client, comme pour la création. On exclut la fiche en cours
-  // d'édition de son propre historique.
   const historique = await historiqueParClient(
     clients.map((c) => c.id),
-    6, // 6 pour compenser l'exclusion de la fiche courante
+    6,
   );
   for (const [clientId, liste] of Object.entries(historique)) {
     historique[clientId] = liste.filter((f) => f.id !== fiche.id).slice(0, 5);
   }
+
+  const affectables = techniciens.filter((t) => t.actif);
 
   return (
     <div className="space-y-8">
@@ -103,7 +120,7 @@ export default async function PageFiche({
               </p>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Link
                 href={`/impression/${fiche.id}`}
                 target="_blank"
@@ -127,6 +144,10 @@ export default async function PageFiche({
                 </span>
               </Link>
 
+              {session.role === "admin" && fiche.statut === "signee" && (
+                <BoutonRouvrir id={fiche.id} numero={fiche.numero} />
+              )}
+
               {session.role === "admin" && (
                 <form action={supprimerFiche}>
                   <input type="hidden" name="id" value={fiche.id} />
@@ -149,13 +170,33 @@ export default async function PageFiche({
         </p>
       )}
 
+      {rouverte && (
+        <p className="rounded-2xl bg-amber/10 px-5 py-3.5 text-[0.85rem] text-amber">
+          Fiche rouverte. La signature du client a été effacée. Modifiez les
+          éléments nécessaires, puis faites signer à nouveau.
+        </p>
+      )}
+
+      {erreur && MESSAGES_ERREUR[erreur] && (
+        <p className="rounded-2xl bg-rouille/10 px-5 py-3.5 text-[0.85rem] text-rouille">
+          {MESSAGES_ERREUR[erreur]}
+        </p>
+      )}
+
       <Reveler delai={90}>
         <FicheFormulaire
           fiche={fiche}
           technicienParDefaut={session.technicien}
           clients={clients}
           equipements={equipements}
+          contacts={contacts}
           historique={historique}
+          techniciens={affectables}
+          sessionUtilisateur={{
+            id: session.id,
+            role: session.role,
+            technicien: session.technicien,
+          }}
         />
       </Reveler>
     </div>

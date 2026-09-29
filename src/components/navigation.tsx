@@ -6,10 +6,17 @@ import { useEffect, useState } from "react";
 import { Logo } from "./marque";
 import { initiales } from "@/lib/format";
 
-const LIENS = [
-  { href: "/fiches", label: "Fiches" },
-  { href: "/fiches/nouvelle", label: "Nouvelle fiche" },
-];
+/** Liens visibles par tous les utilisateurs connectés. */
+const LIENS = [{ href: "/fiches", label: "Fiches" }];
+
+/**
+ * Création de fiche, réservée à l'administrateur.
+ *
+ * La règle est aussi appliquée côté serveur : `/fiches/nouvelle` redirige un
+ * technicien qui tenterait d'y accéder par URL directe. Le retrait ici n'est
+ * qu'un confort visuel.
+ */
+const LIEN_NOUVELLE = { href: "/fiches/nouvelle", label: "Nouvelle fiche" };
 
 /** L'administration n'apparaît que pour qui peut y entrer. */
 const LIENS_ADMIN = [
@@ -18,10 +25,6 @@ const LIENS_ADMIN = [
   { href: "/admin/journal", label: "Journal" },
 ];
 
-/**
- * Barre flottante détachée du haut de page. Sur mobile, le menu s'ouvre en
- * plein écran avec révélation décalée des liens.
- */
 export function Navigation({
   technicien,
   role,
@@ -33,7 +36,11 @@ export function Navigation({
 }) {
   const chemin = usePathname();
   const [ouvert, setOuvert] = useState(false);
-  const liens = role === "admin" ? [...LIENS, ...LIENS_ADMIN] : LIENS;
+
+  const liens =
+    role === "admin"
+      ? [...LIENS, LIEN_NOUVELLE, ...LIENS_ADMIN]
+      : LIENS;
 
   useEffect(() => {
     document.body.style.overflow = ouvert ? "hidden" : "";
@@ -42,15 +49,6 @@ export function Navigation({
     };
   }, [ouvert]);
 
-  /**
-   * Détermine si un lien est actif.
-   *
-   * Les racines (`/fiches`, `/admin`) matchent en exact pour éviter que
-   * `/admin/journal` n'allume aussi le lien `/admin`. Les sous-routes
-   * utilisent `startsWith(`${href}/`)` avec le slash final, plus précis
-   * qu'un simple `startsWith(href)` : `/admin/clients` n'allumera pas un
-   * hypothétique `/admin/clients-archivés`.
-   */
   const actif = (href: string) => {
     if (href === "/fiches" || href === "/admin") return chemin === href;
     return chemin === href || chemin.startsWith(`${href}/`);
@@ -60,7 +58,6 @@ export function Navigation({
     <>
       <header
         className="sticky top-0 z-30 px-4 pt-5 pb-2 print:hidden"
-        // La page peint sous l'encoche : on repousse la barre en dessous.
         style={{ paddingTop: "max(1.25rem, env(safe-area-inset-top))" }}
       >
         <nav className="mx-auto flex w-full max-w-6xl items-center gap-3 rounded-full border border-white/60 bg-white/70 p-2 pl-3 shadow-flottant backdrop-blur-2xl">
@@ -111,7 +108,6 @@ export function Navigation({
               </button>
             </form>
 
-            {/* Hamburger : les deux barres pivotent pour former une croix. */}
             <button
               type="button"
               onClick={() => setOuvert((v) => !v)}
@@ -134,7 +130,6 @@ export function Navigation({
         </nav>
       </header>
 
-      {/* Voile plein écran. Toujours monté pour que la fermeture s'anime. */}
       <div
         className={`fixed inset-0 z-20 bg-white/85 backdrop-blur-3xl transition-all duration-700 ease-mass md:hidden print:hidden ${
           ouvert ? "opacity-100" : "pointer-events-none opacity-0"
@@ -145,8 +140,6 @@ export function Navigation({
             <Link
               key={lien.href}
               href={lien.href}
-              // Le menu se referme au clic : plus fiable que de réagir au
-              // changement d'URL, et sans setState dans un effet.
               onClick={() => setOuvert(false)}
               className={`border-b border-hairline py-6 font-display text-[2rem] font-semibold tracking-[-0.03em] transition-all duration-700 ease-mass ${
                 ouvert ? "translate-y-0 opacity-100" : "translate-y-12 opacity-0"

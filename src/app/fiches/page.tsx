@@ -50,12 +50,6 @@ function construireUrl(
   return qs ? `${base}?${qs}` : base;
 }
 
-/**
- * Construit l'URL d'export en conservant les filtres courants.
- *
- * On exclut volontairement `page`, `supprime` et `erreur` : ce sont des
- * paramètres d'état de la page, pas des critères de sélection des fiches.
- */
 function construireLienExport(actuels: FiltresCourants): string {
   const p = new URLSearchParams();
   for (const [cle, valeur] of Object.entries(actuels)) {
@@ -183,26 +177,28 @@ export default async function PageFiches({
                 Exporter
               </Link>
 
-              <Link
-                href="/fiches/nouvelle"
-                className="group flex items-center justify-between gap-3 rounded-full bg-ink py-2 pr-2 pl-6 text-[0.95rem] font-medium text-white shadow-flottant transition-all duration-500 ease-mass hover:bg-navy-deep active:scale-[0.98]"
-              >
-                <span>Nouvelle fiche</span>
-                <span className="grid h-9 w-9 place-items-center rounded-full bg-white/12 transition-all duration-500 ease-mass group-hover:translate-x-1 group-hover:-translate-y-[1px] group-hover:scale-105">
-                  <svg
-                    width="15"
-                    height="15"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.3"
-                    strokeLinecap="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M8 3.5v9M3.5 8h9" />
-                  </svg>
-                </span>
-              </Link>
+              {admin && (
+                <Link
+                  href="/fiches/nouvelle"
+                  className="group flex items-center justify-between gap-3 rounded-full bg-ink py-2 pr-2 pl-6 text-[0.95rem] font-medium text-white shadow-flottant transition-all duration-500 ease-mass hover:bg-navy-deep active:scale-[0.98]"
+                >
+                  <span>Nouvelle fiche</span>
+                  <span className="grid h-9 w-9 place-items-center rounded-full bg-white/12 transition-all duration-500 ease-mass group-hover:translate-x-1 group-hover:-translate-y-[1px] group-hover:scale-105">
+                    <svg
+                      width="15"
+                      height="15"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.3"
+                      strokeLinecap="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M8 3.5v9M3.5 8h9" />
+                    </svg>
+                  </span>
+                </Link>
+              )}
             </div>
           </div>
         </section>
@@ -325,14 +321,18 @@ export default async function PageFiches({
                 <p className="font-display text-[1.5rem] font-semibold tracking-[-0.03em]">
                   {filtreActif
                     ? "Aucune fiche ne correspond"
-                    : "Aucune fiche pour l'instant"}
+                    : admin
+                      ? "Aucune fiche pour l'instant"
+                      : "Aucune intervention affectée"}
                 </p>
                 <p className="mx-auto mt-3 max-w-sm text-[0.9rem] leading-relaxed text-ink-soft">
                   {filtreActif
                     ? "Élargissez la recherche ou effacez les filtres."
-                    : "La première intervention saisie apparaîtra ici, prête à imprimer."}
+                    : admin
+                      ? "La première intervention saisie apparaîtra ici, prête à imprimer."
+                      : "Aucune fiche ne vous est encore affectée. Vous serez notifié dès qu'une intervention vous sera attribuée."}
                 </p>
-                {!filtreActif && (
+                {!filtreActif && admin && (
                   <Link
                     href="/fiches/nouvelle"
                     className="mt-8 inline-flex items-center gap-2 rounded-full bg-ink px-6 py-3 text-[0.88rem] font-medium text-white transition-all duration-500 ease-mass hover:bg-navy-deep active:scale-[0.98]"

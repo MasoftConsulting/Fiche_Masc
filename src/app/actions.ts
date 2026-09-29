@@ -12,7 +12,11 @@ import {
   lireSession,
   ouvrirSession,
   sessionConfiguree,
+  ouvrirSessionEnAttente,
+  lireSessionEnAttente,
+  fermerSessionEnAttente,
 } from "@/lib/session";
+import { envoyerCodeMfa, verifierCodeMfa } from "@/lib/mfa";
 import { journaliser, ACTIONS } from "@/lib/journal";
 import { TESTS_EFFECTUES, TYPES_INTERVENTION, type Resultat } from "@/lib/types";
 
@@ -22,6 +26,11 @@ export type EtatFormulaire = { erreur?: string; message?: string };
 
 /* ------------------------------------------------------------------ accès */
 
+/**
+ * Étape 1 de la connexion : vérifie le code d'accès, envoie un code MFA par
+ * email, et pose une pré-session courte (10 minutes) avant de rediriger vers
+ * la page de vérification.
+ */
 export async function connexion(
   _etat: EtatFormulaire,
   formData: FormData,
@@ -35,33 +44,104 @@ export async function connexion(
   const code = String(formData.get("code") ?? "").trim();
   if (!code) return { erreur: "Saisissez votre code d'accès." };
 
+  let porteur: {
+    id: string | null;
+    technicien: string;
+    role: "technicien" | "admin";
+    email: string | null;
+  };
+
   if (estCodeAdmin(code)) {
-    const session = {
+    porteur = {
       id: null,
       technicien: "Administrateur",
-      role: "admin" as const,
+      role: "admin",
+      email: process.env.ADMIN_EMAIL ?? null,
     };
-    await ouvrirSession(session);
-    await journaliser(session, ACTIONS.SESSION_CONNEXION, {
-      details: { role: "admin", origine: "code_amorcage" },
-    });
   } else {
     const technicien = await authentifierParCode(code);
-    if (!technicien) return { erreur: "Code d'accès inconnu, désactivé ou expiré." };
-
-    const session = {
+    if (!technicien) {
+      return { erreur: "Code d'accès inconnu, désactivé ou expiré." };
+    }
+    porteur = {
       id: technicien.id,
       technicien: technicien.nom,
       role: technicien.role,
+      email: technicien.email,
     };
-    await ouvrirSession(session);
-    await journaliser(session, ACTIONS.SESSION_CONNEXION, {
-      details: { role: technicien.role },
-    });
   }
+
+  if (!porteur.email) {
+    return {
+      erreur:
+        "Aucune adresse email associée à ce compte. Contactez l'administrateur.",
+    };
+  }
+
+  const envoi = await envoyerCodeMfa(porteur.id, porteur.email);
+  if ("erreur" in envoi) return { erreur: envoi.erreur };
+
+  await ouvrirSessionEnAttente({
+    id: porteur.id,
+    technicien: porteur.technicien,
+    role: porteur.role,
+    email: porteur.email,
+  });
+
+  redirect("/verification");
+}
+
+/**
+ * Étape 2 : valide le code MFA et ouvre la session définitive.
+ */
+export async function verifierCodeAction(
+  _etat: EtatFormulaire,
+  formData: FormData,
+): Promise<EtatFormulaire> {
+  const enAttente = await lireSessionEnAttente();
+  if (!enAttente) {
+    redirect("/connexion?expire=1");
+  }
+
+  const code = String(formData.get("code") ?? "").trim();
+  if (!code) return { erreur: "Saisissez le code à 6 chiffres." };
+
+  const resultat = await verifierCodeMfa(enAttente.id, code);
+  if ("erreur" in resultat) return { erreur: resultat.erreur };
+
+  const session = {
+    id: enAttente.id,
+    technicien: enAttente.technicien,
+    role: enAttente.role,
+  };
+  await ouvrirSession(session);
+  await fermerSessionEnAttente();
+
+  await journaliser(session, ACTIONS.SESSION_CONNEXION, {
+    details: {
+      role: enAttente.role,
+      mfa: true,
+      origine: enAttente.id ? "technicien" : "code_amorcage",
+    },
+  });
 
   const suite = String(formData.get("suite") ?? "/fiches");
   redirect(suite.startsWith("/") && !suite.startsWith("//") ? suite : "/fiches");
+}
+
+/**
+ * Renvoie un nouveau code MFA.
+ */
+export async function renvoyerCodeAction() {
+  const enAttente = await lireSessionEnAttente();
+  if (!enAttente) redirect("/connexion?expire=1");
+
+  const envoi = await envoyerCodeMfa(enAttente.id, enAttente.email);
+  if ("erreur" in envoi) {
+    redirect("/verification?erreur=envoi");
+  }
+
+  redirect("/verification?renvoye=1");
 }
 
 export async function deconnexion() {
@@ -119,6 +199,7 @@ function champsModifies(
     "client_fonction",
     "client_id",
     "equipement_id",
+    "technicien_id",
   ];
 
   const modifies: string[] = [];
@@ -135,6 +216,38 @@ function champsModifies(
     modifies.push("tests");
   }
 
+  return modifies;
+}
+
+const CHAMPS_VERROUILLES_TECHNICIEN: (keyof Fiche)[] = [
+  "societe",
+  "adresse",
+  "contact",
+  "telephone",
+  "email",
+  "client_id",
+  "equipement_id",
+  "marque_modele",
+  "numero_serie",
+  "adresse_ip",
+  "localisation",
+  "technicien_id",
+  "technicien",
+];
+
+function champsVerrouillesModifies(
+  avant: Fiche,
+  valeurs: Record<string, unknown>,
+  sessionRole: string,
+): string[] {
+  if (sessionRole === "admin") return [];
+
+  const modifies: string[] = [];
+  for (const cle of CHAMPS_VERROUILLES_TECHNICIEN) {
+    const a = (avant[cle] ?? null) as unknown;
+    const b = (valeurs[cle as string] ?? null) as unknown;
+    if (a !== b) modifies.push(cle as string);
+  }
   return modifies;
 }
 
@@ -158,6 +271,13 @@ export async function enregistrerFiche(
 
   if (id && !ficheExistante) return { erreur: "Fiche introuvable." };
 
+  if (id && ficheExistante && ficheExistante.statut === "signee") {
+    return {
+      erreur:
+        "Cette fiche est signée et ne peut plus être modifiée. Demandez à un administrateur de la rouvrir pour correction.",
+    };
+  }
+
   if (
     id &&
     ficheExistante &&
@@ -167,16 +287,25 @@ export async function enregistrerFiche(
     return { erreur: "Cette fiche appartient à un autre technicien." };
   }
 
+  if (id && ficheExistante && session.role !== "admin") {
+    const technicienSoumis = texte(formData, "technicien_id");
+    if (technicienSoumis && technicienSoumis !== ficheExistante.technicien_id) {
+      return {
+        erreur: "Seul l'administrateur peut modifier l'affectation.",
+      };
+    }
+  }
+
   const resultat = texte(formData, "resultat") as Resultat | null;
   const signatureClient = signature(formData, "signature_client");
   const signatureTechnicien = signature(formData, "signature_technicien");
 
   const statut = signatureClient ? "signee" : "brouillon";
 
+  const technicienIdFinal =
+    texte(formData, "technicien_id") ?? session.id ?? null;
+
   const valeurs = {
-    // Références vers les référentiels. Nullables : le technicien peut
-    // saisir une intervention ponctuelle sans sélectionner de client ou
-    // d'équipement.
     client_id: texte(formData, "client_id"),
     equipement_id: texte(formData, "equipement_id"),
 
@@ -191,6 +320,7 @@ export async function enregistrerFiche(
     telephone: texte(formData, "telephone"),
     email: texte(formData, "email"),
     technicien: texte(formData, "technicien") ?? session.technicien,
+    technicien_id: technicienIdFinal,
 
     types: coches(formData, "type", TYPES_INTERVENTION.map((t) => t.cle)),
     type_autre: texte(formData, "type_autre"),
@@ -223,6 +353,19 @@ export async function enregistrerFiche(
     statut,
   };
 
+  if (id && ficheExistante && session.role !== "admin") {
+    const champsInterdits = champsVerrouillesModifies(
+      ficheExistante,
+      valeurs as Record<string, unknown>,
+      session.role,
+    );
+    if (champsInterdits.length > 0) {
+      return {
+        erreur: `Champ réservé à l'administrateur : ${champsInterdits.join(", ")}.`,
+      };
+    }
+  }
+
   let identifiant = id;
 
   if (id) {
@@ -232,7 +375,7 @@ export async function enregistrerFiche(
     const numero = texte(formData, "numero") ?? (await prochainNumero());
     const { data, error } = await supabase
       .from(TABLE)
-      .insert({ ...valeurs, numero, technicien_id: session.id })
+      .insert({ ...valeurs, numero })
       .select("id")
       .single();
 
@@ -247,7 +390,11 @@ export async function enregistrerFiche(
     await journaliser(session, ACTIONS.FICHE_CREATION, {
       tableCible: TABLE,
       ligneId: identifiant ?? undefined,
-      details: { numero, societe: valeurs.societe },
+      details: {
+        numero,
+        societe: valeurs.societe,
+        technicien_id: valeurs.technicien_id,
+      },
     });
 
     if (statut === "signee") {
@@ -286,6 +433,54 @@ export async function enregistrerFiche(
   if (identifiant) revalidatePath(`/fiches/${identifiant}`);
   redirect(`/fiches/${identifiant}?enregistre=1`);
 }
+
+/* ------------------------------------------------ réouverture admin */
+
+export async function rouvrirFicheAction(formData: FormData) {
+  const session = await lireSession();
+  if (!session || session.role !== "admin") redirect("/fiches?erreur=droits");
+
+  const id = String(formData.get("id") ?? "");
+  const motif = String(formData.get("motif") ?? "").trim();
+  if (!id) redirect("/fiches");
+
+  const fiche = await lireFiche(id);
+  if (!fiche) redirect("/fiches");
+  if (fiche.statut !== "signee") {
+    redirect(`/fiches/${id}?erreur=deja-ouvert`);
+  }
+
+  const supabase = createAdminClient();
+  if (!supabase) redirect(`/fiches/${id}?erreur=config`);
+
+  const { error } = await supabase
+    .from(TABLE)
+    .update({
+      statut: "brouillon",
+      signature_client: null,
+      signature_technicien: null,
+    })
+    .eq("id", id);
+
+  if (error) redirect(`/fiches/${id}?erreur=rouvrir`);
+
+  await journaliser(session, ACTIONS.FICHE_REOUVERTURE, {
+    tableCible: TABLE,
+    ligneId: id,
+    details: {
+      numero: fiche.numero,
+      societe: fiche.societe,
+      motif: motif || null,
+    },
+  });
+
+  revalidatePath("/fiches");
+  revalidatePath("/admin");
+  revalidatePath(`/fiches/${id}`);
+  redirect(`/fiches/${id}?rouverte=1`);
+}
+
+/* ------------------------------------------------------------ suppression */
 
 export async function supprimerFiche(formData: FormData) {
   const session = await lireSession();
