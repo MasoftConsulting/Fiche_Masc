@@ -184,3 +184,25 @@ create table if not exists public.codes_mfa (
 );
 
 alter table public.codes_mfa enable row level security;
+
+-- ===========================================================================
+-- Contacts des clients
+-- ===========================================================================
+-- Interlocuteurs d'un client. Choisis dans la fiche, ils en recopient le nom,
+-- le téléphone et l'e-mail (la fiche garde ces valeurs en texte : supprimer
+-- un contact ne modifie aucune fiche). Supprimés avec leur client.
+
+create table if not exists public.contacts (
+  id          uuid primary key default gen_random_uuid(),
+  client_id   uuid not null references public.clients (id) on delete cascade,
+  nom         text not null,
+  poste       text,
+  email       text,
+  telephone   text,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+
+create index if not exists contacts_client_idx on public.contacts (client_id);
+
+alter table public.contacts enable row level security;

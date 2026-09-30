@@ -5,6 +5,7 @@ import { Reveler } from "@/components/reveler";
 import { prochainNumero, historiqueParClient } from "@/lib/fiches";
 import { listerClients } from "@/lib/clients";
 import { listerEquipements } from "@/lib/equipements";
+import { listerContacts } from "@/lib/contacts";
 import { lireSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -13,10 +14,11 @@ export default async function PageNouvelleFiche() {
   const session = await lireSession();
   if (!session) redirect("/connexion");
 
-  const [numero, clients, equipements] = await Promise.all([
+  const [numero, clients, equipements, contacts] = await Promise.all([
     prochainNumero(),
     listerClients(),
     listerEquipements(),
+    listerContacts(),
   ]);
 
   // Historique groupé par client — une seule requête pour tous les clients
@@ -59,6 +61,7 @@ export default async function PageNouvelleFiche() {
           technicienParDefaut={session.technicien}
           clients={clients}
           equipements={equipements}
+          contacts={contacts}
           historique={historique}
         />
       </Reveler>

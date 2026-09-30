@@ -152,7 +152,7 @@ export async function supprimerClient(id: string): Promise<{ erreur?: string }> 
   const supabase = createAdminClient();
   if (!supabase) return { erreur: "Supabase n'est pas configuré." };
 
-  // `on delete cascade` sur equipements : les équipements partent avec.
+  // `on delete cascade` sur equipements et contacts : ils partent avec.
   // `on delete set null` sur fiches_intervention : les fiches restent, leur
   // client_id devient null, et leur colonne texte `societe` continue
   // d'afficher le nom tel qu'il a été signé.

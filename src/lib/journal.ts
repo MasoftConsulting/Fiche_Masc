@@ -28,6 +28,10 @@ export const ACTIONS = {
   CLIENT_CREATION: "client.creation",
   CLIENT_MODIFICATION: "client.modification",
   CLIENT_SUPPRESSION: "client.suppression",
+  // Contacts
+  CONTACT_CREATION: "contact.creation",
+  CONTACT_MODIFICATION: "contact.modification",
+  CONTACT_SUPPRESSION: "contact.suppression",
   // Équipements
   EQUIPEMENT_CREATION: "equipement.creation",
   EQUIPEMENT_MODIFICATION: "equipement.modification",
@@ -61,6 +65,9 @@ export const LABELS_ACTION: Record<ActionJournal, string> = {
   [ACTIONS.CLIENT_CREATION]: "Client créé",
   [ACTIONS.CLIENT_MODIFICATION]: "Client modifié",
   [ACTIONS.CLIENT_SUPPRESSION]: "Client supprimé",
+  [ACTIONS.CONTACT_CREATION]: "Contact créé",
+  [ACTIONS.CONTACT_MODIFICATION]: "Contact modifié",
+  [ACTIONS.CONTACT_SUPPRESSION]: "Contact supprimé",
   [ACTIONS.EQUIPEMENT_CREATION]: "Équipement créé",
   [ACTIONS.EQUIPEMENT_MODIFICATION]: "Équipement modifié",
   [ACTIONS.EQUIPEMENT_SUPPRESSION]: "Équipement supprimé",

@@ -9,6 +9,7 @@ import { SignaturePad } from "./signature-pad";
 import { RESULTATS, TESTS_EFFECTUES, TYPES_INTERVENTION, type Fiche } from "@/lib/types";
 import type { Client } from "@/lib/clients";
 import type { Equipement } from "@/lib/equipements";
+import type { Contact } from "@/lib/contacts";
 import type { FicheResume } from "@/lib/fiches";
 
 /**
@@ -25,6 +26,7 @@ export function FicheFormulaire({
   technicienParDefaut,
   clients,
   equipements,
+  contacts,
   historique,
   verrouillee = false,
 }: {
@@ -33,6 +35,7 @@ export function FicheFormulaire({
   technicienParDefaut: string;
   clients: Client[];
   equipements: Equipement[];
+  contacts: Contact[];
   historique: Record<string, FicheResume[]>;
   /** Fiche signée consultée par un technicien : lecture seule. */
   verrouillee?: boolean;
@@ -51,6 +54,15 @@ export function FicheFormulaire({
   const [telephone, setTelephone] = useState(v?.telephone ?? "");
   const [email, setEmail] = useState(v?.email ?? "");
 
+  // La fiche ne mémorise pas l'identifiant du contact, seulement son nom : à
+  // la réouverture, on retrouve le contact du client qui porte ce nom.
+  const [contactId, setContactId] = useState(
+    () =>
+      contacts.find((c) => c.client_id === v?.client_id && c.nom === v?.contact)?.id ?? "",
+  );
+  const [clientNom, setClientNom] = useState(v?.client_nom ?? "");
+  const [clientFonction, setClientFonction] = useState(v?.client_fonction ?? "");
+
   const [marqueModele, setMarqueModele] = useState(v?.marque_modele ?? "");
   const [numeroSerie, setNumeroSerie] = useState(v?.numero_serie ?? "");
   const [adresseIp, setAdresseIp] = useState(v?.adresse_ip ?? "");
@@ -60,6 +72,8 @@ export function FicheFormulaire({
 
   const changerClient = (nouvelId: string) => {
     setClientId(nouvelId);
+    // Les contacts appartiennent au client : changer de client annule le choix.
+    setContactId("");
     const client = clients.find((c) => c.id === nouvelId);
     if (client) {
       setSociete(client.nom);
@@ -79,6 +93,23 @@ export function FicheFormulaire({
     }
   };
 
+  /**
+   * Choisir un contact recopie ses coordonnées dans la section 1, et son nom
+   * et son poste en section 9 : c'est en général lui qui signe. Tout reste
+   * modifiable. Un contact sans téléphone ou sans e-mail laisse en place ceux
+   * du client.
+   */
+  const changerContact = (nouvelId: string) => {
+    setContactId(nouvelId);
+    const c = contacts.find((x) => x.id === nouvelId);
+    if (!c) return;
+    setContact(c.nom);
+    if (c.telephone) setTelephone(c.telephone);
+    if (c.email) setEmail(c.email);
+    setClientNom(c.nom);
+    setClientFonction(c.poste ?? "");
+  };
+
   const changerEquipement = (nouvelId: string) => {
     setEquipementId(nouvelId);
     const equip = equipements.find((e) => e.id === nouvelId);
@@ -94,6 +125,10 @@ export function FicheFormulaire({
       setLocalisation("");
     }
   };
+
+  const contactsDuClient = clientId
+    ? contacts.filter((c) => c.client_id === clientId)
+    : [];
 
   const equipementsDuClient = clientId
     ? equipements.filter((e) => e.client_id === clientId)
@@ -199,6 +234,34 @@ export function FicheFormulaire({
                 modifier ensuite si l&apos;intervention a lieu ailleurs.
               </p>
             </label>
+
+            {clientId && (
+              <label className="mt-4 block">
+                <span className="etiquette">Contact chez le client</span>
+                <select
+                  className="champ"
+                  value={contactId}
+                  onChange={(e) => changerContact(e.target.value)}
+                  disabled={contactsDuClient.length === 0}
+                >
+                  <option value="">
+                    {contactsDuClient.length > 0
+                      ? "— Aucun (saisie libre) —"
+                      : "Aucun contact enregistré pour ce client"}
+                  </option>
+                  {contactsDuClient.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nom}
+                      {c.poste ? ` · ${c.poste}` : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-2 text-[0.72rem] text-ink-soft">
+                  Remplit le contact, le téléphone et l&apos;e-mail, ainsi que le nom et la
+                  fonction du signataire (section 9).
+                </p>
+              </label>
+            )}
 
             {clientId && historique[clientId]?.length > 0 && (
               <HistoriqueClient
@@ -454,10 +517,20 @@ export function FicheFormulaire({
         >
           <div className="grid gap-5 sm:grid-cols-2">
             <Champ label="Nom du client">
-              <input name="client_nom" className="champ" defaultValue={v?.client_nom ?? ""} />
+              <input
+                name="client_nom"
+                className="champ"
+                value={clientNom}
+                onChange={(e) => setClientNom(e.target.value)}
+              />
             </Champ>
             <Champ label="Fonction">
-              <input name="client_fonction" className="champ" defaultValue={v?.client_fonction ?? ""} />
+              <input
+                name="client_fonction"
+                className="champ"
+                value={clientFonction}
+                onChange={(e) => setClientFonction(e.target.value)}
+              />
             </Champ>
           </div>
 
