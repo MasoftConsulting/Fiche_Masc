@@ -57,6 +57,8 @@ export async function creerEquipementAction(
   });
 
   revalidatePath(`/admin/clients/${clientId}`);
+
+  revalidatePath("/admin/equipements");
   revalidatePath("/admin/clients");
   return { ok: true };
 }
@@ -108,6 +110,8 @@ export async function modifierEquipementAction(
   }
 
   revalidatePath(`/admin/clients/${avant.client_id}`);
+
+  revalidatePath("/admin/equipements");
   revalidatePath("/admin/clients");
   return { ok: true };
 }
@@ -137,6 +141,14 @@ export async function supprimerEquipementAction(formData: FormData) {
   });
 
   revalidatePath(`/admin/clients/${avant.client_id}`);
+
+  revalidatePath("/admin/equipements");
   revalidatePath("/admin/clients");
+  // Retour à la page d'origine (liste globale ou page du client). Limité à
+  // /admin/ : un paramètre de formulaire ne doit pas pouvoir rediriger ailleurs.
+  const retour = String(formData.get("retour") ?? "");
+  if (retour.startsWith("/admin/") && !retour.includes("//")) {
+    redirect(`${retour}${retour.includes("?") ? "&" : "?"}equipement_supprime=1`);
+  }
   redirect(`/admin/clients/${avant.client_id}?equipement_supprime=1`);
 }

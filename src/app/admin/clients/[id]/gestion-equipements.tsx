@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useEffect, useState } from "react";
 import {
   creerEquipementAction,
@@ -9,12 +10,25 @@ import {
 } from "@/app/admin/equipements/actions";
 import type { Equipement } from "@/lib/equipements";
 
+export type ClientChoix = { id: string; nom: string };
+
+/**
+ * Deux usages :
+ *  - page d'un client : `clientId` fixe le client de tout ce qui est ajouté ;
+ *  - page d'administration globale : `clients` permet de choisir le client à
+ *    l'ajout, et chaque ligne affiche le client auquel elle appartient.
+ */
 export function GestionEquipements({
   clientId,
+  clients,
   equipements,
+  retour,
 }: {
-  clientId: string;
+  clientId?: string;
+  clients?: ClientChoix[];
   equipements: Equipement[];
+  /** Page où revenir après une suppression (par défaut : la page du client). */
+  retour?: string;
 }) {
   const [ajoutOuvert, setAjoutOuvert] = useState(false);
 
@@ -36,7 +50,11 @@ export function GestionEquipements({
       </header>
 
       {ajoutOuvert && (
-        <BlocAjout clientId={clientId} onFermer={() => setAjoutOuvert(false)} />
+        <BlocAjout
+          clientId={clientId}
+          clients={clients}
+          onFermer={() => setAjoutOuvert(false)}
+        />
       )}
 
       {equipements.length === 0 && !ajoutOuvert && (
@@ -54,7 +72,10 @@ export function GestionEquipements({
       )}
 
       {equipements.map((e) => (
-        <LigneEquipement key={e.id} equipement={e} />
+        <LigneEquipement
+          nomClient={clients?.find((cl) => cl.id === e.client_id)?.nom}
+          retour={retour}
+          key={e.id} equipement={e} />
       ))}
     </section>
   );
@@ -64,9 +85,11 @@ export function GestionEquipements({
 
 function BlocAjout({
   clientId,
+  clients,
   onFermer,
 }: {
-  clientId: string;
+  clientId?: string;
+  clients?: ClientChoix[];
   onFermer: () => void;
 }) {
   const [etat, soumettre, enCours] = useActionState<EtatEquipement, FormData>(
@@ -83,7 +106,23 @@ function BlocAjout({
     <div className="rounded-[1.6rem] bg-white/45 p-1.5 ring-1 ring-brand/30">
       <div className="rounded-[calc(1.6rem-0.375rem)] bg-surface p-5 shadow-[inset_0_1px_1px_rgba(255,255,255,0.9)] sm:p-6">
         <form action={soumettre} className="space-y-4">
-          <input type="hidden" name="client_id" value={clientId} />
+          {clients ? (
+            <label className="block">
+              <span className="etiquette">Client *</span>
+              <select name="client_id" className="champ" required defaultValue={clientId ?? ""}>
+                <option value="" disabled>
+                  — Choisir le client —
+                </option>
+                {clients.map((cl) => (
+                  <option key={cl.id} value={cl.id}>
+                    {cl.nom}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <input type="hidden" name="client_id" value={clientId} />
+          )}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block sm:col-span-2">
@@ -151,7 +190,15 @@ function BlocAjout({
 
 /* ---------------------------------------------------- ligne + édition */
 
-function LigneEquipement({ equipement }: { equipement: Equipement }) {
+function LigneEquipement({
+  equipement,
+  nomClient,
+  retour,
+}: {
+  equipement: Equipement;
+  nomClient?: string;
+  retour?: string;
+}) {
   const [edition, setEdition] = useState(false);
   const [confirmeSuppression, setConfirmeSuppression] = useState(false);
 
@@ -169,6 +216,14 @@ function LigneEquipement({ equipement }: { equipement: Equipement }) {
       <div className="rounded-[calc(1.6rem-0.375rem)] bg-surface px-5 py-4 shadow-[inset_0_1px_1px_rgba(255,255,255,0.9)] sm:px-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
+            {nomClient && (
+              <Link
+                href={`/admin/clients/${equipement.client_id}`}
+                className="mb-1 inline-block text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-brand hover:underline"
+              >
+                {nomClient}
+              </Link>
+            )}
             <h3 className="truncate font-display text-[1.1rem] font-semibold tracking-[-0.03em]">
               {equipement.marque_modele ?? "—"}
             </h3>
@@ -218,6 +273,7 @@ function LigneEquipement({ equipement }: { equipement: Equipement }) {
                 </span>
                 <form action={supprimerEquipementAction}>
                   <input type="hidden" name="id" value={equipement.id} />
+                  {retour && <input type="hidden" name="retour" value={retour} />}
                   <button
                     type="submit"
                     className="rounded-full bg-rouille px-3 py-2 text-[0.75rem] font-medium text-white transition-all duration-500 ease-mass hover:bg-rouille/90 active:scale-[0.97]"

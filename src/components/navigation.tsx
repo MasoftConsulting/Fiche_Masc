@@ -15,6 +15,8 @@ const LIENS = [
 const LIENS_ADMIN = [
   { href: "/admin", label: "Techniciens" },
   { href: "/admin/clients", label: "Clients" },
+  { href: "/admin/equipements", label: "Équipements" },
+  { href: "/admin/contacts", label: "Contacts" },
   { href: "/admin/journal", label: "Journal" },
 ];
 

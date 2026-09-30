@@ -61,6 +61,8 @@ export async function creerContactAction(
   });
 
   revalidatePath(`/admin/clients/${clientId}`);
+
+  revalidatePath("/admin/contacts");
   return { ok: true };
 }
 
@@ -114,6 +116,8 @@ export async function modifierContactAction(
   }
 
   revalidatePath(`/admin/clients/${avant.client_id}`);
+
+  revalidatePath("/admin/contacts");
   return { ok: true };
 }
 
@@ -141,5 +145,13 @@ export async function supprimerContactAction(formData: FormData) {
   });
 
   revalidatePath(`/admin/clients/${avant.client_id}`);
+
+  revalidatePath("/admin/contacts");
+  // Retour à la page d'origine (liste globale ou page du client). Limité à
+  // /admin/ : un paramètre de formulaire ne doit pas pouvoir rediriger ailleurs.
+  const retour = String(formData.get("retour") ?? "");
+  if (retour.startsWith("/admin/") && !retour.includes("//")) {
+    redirect(`${retour}${retour.includes("?") ? "&" : "?"}contact_supprime=1`);
+  }
   redirect(`/admin/clients/${avant.client_id}?contact_supprime=1`);
 }
