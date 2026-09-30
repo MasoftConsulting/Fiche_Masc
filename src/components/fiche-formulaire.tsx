@@ -23,7 +23,9 @@ import type { FicheResume } from "@/lib/fiches";
 export function FicheFormulaire({
   fiche,
   numeroPropose,
+  techniciens,
   technicienParDefaut,
+  peutAttribuer,
   clients,
   equipements,
   contacts,
@@ -32,7 +34,12 @@ export function FicheFormulaire({
 }: {
   fiche?: Fiche;
   numeroPropose?: string;
-  technicienParDefaut: string;
+  /** Techniciens actifs, proposés dans la liste. */
+  techniciens: { id: string; nom: string }[];
+  /** Technicien présélectionné sur une nouvelle fiche (l'utilisateur connecté). */
+  technicienParDefaut: string | null;
+  /** Administrateur : peut choisir le technicien. Sinon, la liste est figée. */
+  peutAttribuer: boolean;
   clients: Client[];
   equipements: Equipement[];
   contacts: Contact[];
@@ -60,6 +67,16 @@ export function FicheFormulaire({
     () =>
       contacts.find((c) => c.client_id === v?.client_id && c.nom === v?.contact)?.id ?? "",
   );
+  const [technicienId, setTechnicienId] = useState(
+    v ? (v.technicien_id ?? "") : (technicienParDefaut ?? ""),
+  );
+  // Le technicien d'une fiche existante peut avoir été désactivé : on l'ajoute
+  // à la liste pour ne pas afficher un choix vide.
+  const optionsTechniciens =
+    v?.technicien_id && !techniciens.some((t) => t.id === v.technicien_id)
+      ? [...techniciens, { id: v.technicien_id, nom: `${v.technicien ?? "Technicien"} (désactivé)` }]
+      : techniciens;
+
   const [clientNom, setClientNom] = useState(v?.client_nom ?? "");
   const [clientFonction, setClientFonction] = useState(v?.client_fonction ?? "");
 
@@ -263,6 +280,35 @@ export function FicheFormulaire({
               </label>
             )}
 
+            {clientId && (
+              <label className="mt-4 block">
+                <span className="etiquette">Équipement du client</span>
+                <select
+                  className="champ"
+                  value={equipementId}
+                  onChange={(e) => changerEquipement(e.target.value)}
+                  disabled={equipementsDuClient.length === 0}
+                >
+                  <option value="">
+                    {equipementsDuClient.length > 0
+                      ? "— Aucun (saisie libre) —"
+                      : "Aucun équipement enregistré pour ce client"}
+                  </option>
+                  {equipementsDuClient.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.marque_modele ?? "Équipement"}
+                      {e.numero_serie ? ` · ${e.numero_serie}` : ""}
+                      {e.localisation ? ` · ${e.localisation}` : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-2 text-[0.72rem] text-ink-soft">
+                  Remplit la marque, le numéro de série, l&apos;IP et la localisation
+                  (section 3).
+                </p>
+              </label>
+            )}
+
             {clientId && historique[clientId]?.length > 0 && (
               <HistoriqueClient
                 entrees={historique[clientId]}
@@ -318,8 +364,26 @@ export function FicheFormulaire({
                 onChange={(e) => setEmail(e.target.value)}
               />
             </Champ>
-            <Champ label="Technicien">
-              <input name="technicien" className="champ" defaultValue={v?.technicien ?? technicienParDefaut} />
+            <Champ label="Technicien *">
+              <select
+                name="technicien_id"
+                className="champ"
+                value={technicienId}
+                onChange={(e) => setTechnicienId(e.target.value)}
+                disabled={!peutAttribuer}
+                required={peutAttribuer && !v}
+              >
+                <option value="" disabled={!v}>
+                  {v && !v.technicien_id
+                    ? `${v.technicien ?? "Non attribuée"} (non attribuée)`
+                    : "— Choisir le technicien —"}
+                </option>
+                {optionsTechniciens.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.nom}
+                  </option>
+                ))}
+              </select>
             </Champ>
           </div>
         </Section>
@@ -351,38 +415,6 @@ export function FicheFormulaire({
 
         {/* -------------------------------------------- 3. matériel */}
         <Section titre="Matériel concerné" numero="3">
-          <div className="mb-6 rounded-2xl bg-brand/[0.05] p-4 ring-1 ring-brand/10">
-            <label className="block">
-              <span className="etiquette">Sélectionner un équipement</span>
-              <select
-                className="champ"
-                value={equipementId}
-                onChange={(e) => changerEquipement(e.target.value)}
-                disabled={!clientId}
-              >
-                <option value="">
-                  {clientId
-                    ? equipementsDuClient.length > 0
-                      ? "— Aucun (saisie libre) —"
-                      : "Aucun équipement enregistré pour ce client"
-                    : "Sélectionnez d'abord un client"}
-                </option>
-                {equipementsDuClient.map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.marque_modele ?? "Équipement"}
-                    {e.numero_serie ? ` · ${e.numero_serie}` : ""}
-                    {e.localisation ? ` · ${e.localisation}` : ""}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-2 text-[0.72rem] text-ink-soft">
-                {clientId
-                  ? "Remplit automatiquement la marque, le numéro de série, l'IP et la localisation."
-                  : "L'équipement dépend du client — choisissez d'abord le client en section 1."}
-              </p>
-            </label>
-          </div>
-
           <div className="grid gap-5 sm:grid-cols-2">
             <Champ label="Marque / Modèle">
               <input

@@ -9,6 +9,7 @@ import { lireFiche, historiqueParClient } from "@/lib/fiches";
 import { listerClients } from "@/lib/clients";
 import { listerEquipements } from "@/lib/equipements";
 import { listerContacts } from "@/lib/contacts";
+import { listerTechniciens } from "@/lib/techniciens";
 import { lireSession } from "@/lib/session";
 import { formaterDateHeure } from "@/lib/format";
 
@@ -44,11 +45,12 @@ export default async function PageFiche({
   const { id } = await params;
   const { enregistre } = await searchParams;
 
-  const [fiche, clients, equipements, contacts] = await Promise.all([
+  const [fiche, clients, equipements, contacts, techniciens] = await Promise.all([
     lireFiche(id),
     listerClients(),
     listerEquipements(),
     listerContacts(),
+    listerTechniciens(),
   ]);
 
   if (!fiche) notFound();
@@ -167,7 +169,11 @@ export default async function PageFiche({
       <Reveler delai={90}>
         <FicheFormulaire
           fiche={fiche}
-          technicienParDefaut={session.technicien}
+          techniciens={techniciens
+            .filter((t) => t.actif)
+            .map((t) => ({ id: t.id, nom: t.nom }))}
+          technicienParDefaut={session.id}
+          peutAttribuer={session.role === "admin"}
           clients={clients}
           equipements={equipements}
           contacts={contacts}

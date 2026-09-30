@@ -184,6 +184,7 @@ function champsModifies(
     "client_fonction",
     "client_id",
     "equipement_id",
+    "technicien_id",
   ];
 
   const modifies: string[] = [];
@@ -201,6 +202,40 @@ function champsModifies(
   }
 
   return modifies;
+}
+
+/**
+ * Technicien de la fiche : `technicien_id` décide qui la voit, `technicien`
+ * est le nom imprimé.
+ *
+ * - L'administrateur choisit dans la liste un technicien actif. Le nom
+ *   imprimé ne change que si l'on change de technicien : renommer un compte
+ *   ne réécrit pas les fiches existantes.
+ * - Un technicien ne peut ni attribuer ni réattribuer : une nouvelle fiche est
+ *   la sienne, une fiche existante garde son technicien. Le champ envoyé par
+ *   le formulaire est ignoré.
+ */
+async function technicienDeLaFiche(
+  session: Session,
+  formData: FormData,
+  avant: Fiche | null,
+): Promise<{ technicien_id: string | null; technicien: string | null } | { erreur: string }> {
+  const inchange = avant && { technicien_id: avant.technicien_id, technicien: avant.technicien };
+
+  if (session.role !== "admin") {
+    return inchange || { technicien_id: session.id, technicien: session.technicien };
+  }
+
+  const choisi = texte(formData, "technicien_id");
+  if (!choisi) {
+    // Fiche ancienne, jamais attribuée : on la laisse telle quelle.
+    return inchange || { erreur: "Choisissez le technicien de la fiche." };
+  }
+  if (inchange && choisi === avant.technicien_id) return inchange;
+
+  const technicien = await lireTechnicien(choisi);
+  if (!technicien?.actif) return { erreur: "Technicien introuvable ou désactivé." };
+  return { technicien_id: technicien.id, technicien: technicien.nom };
 }
 
 export async function enregistrerFiche(
@@ -239,6 +274,9 @@ export async function enregistrerFiche(
     return { erreur: "Cette fiche est signée : seul un administrateur peut la modifier." };
   }
 
+  const affectation = await technicienDeLaFiche(session, formData, ficheExistante);
+  if ("erreur" in affectation) return { erreur: affectation.erreur };
+
   const resultat = texte(formData, "resultat") as Resultat | null;
   const signatureClient = signature(formData, "signature_client");
   const signatureTechnicien = signature(formData, "signature_technicien");
@@ -262,7 +300,8 @@ export async function enregistrerFiche(
     contact: texte(formData, "contact"),
     telephone: texte(formData, "telephone"),
     email: texte(formData, "email"),
-    technicien: texte(formData, "technicien") ?? session.technicien,
+    technicien: affectation.technicien,
+    technicien_id: affectation.technicien_id,
 
     types: coches(formData, "type", TYPES_INTERVENTION.map((t) => t.cle)),
     type_autre: texte(formData, "type_autre"),
@@ -304,7 +343,7 @@ export async function enregistrerFiche(
     const numero = texte(formData, "numero") ?? (await prochainNumero());
     const { data, error } = await supabase
       .from(TABLE)
-      .insert({ ...valeurs, numero, technicien_id: session.id })
+      .insert({ ...valeurs, numero })
       .select("id")
       .single();
 

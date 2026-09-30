@@ -6,6 +6,7 @@ import { prochainNumero, historiqueParClient } from "@/lib/fiches";
 import { listerClients } from "@/lib/clients";
 import { listerEquipements } from "@/lib/equipements";
 import { listerContacts } from "@/lib/contacts";
+import { listerTechniciens } from "@/lib/techniciens";
 import { lireSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -14,11 +15,12 @@ export default async function PageNouvelleFiche() {
   const session = await lireSession();
   if (!session) redirect("/connexion");
 
-  const [numero, clients, equipements, contacts] = await Promise.all([
+  const [numero, clients, equipements, contacts, techniciens] = await Promise.all([
     prochainNumero(),
     listerClients(),
     listerEquipements(),
     listerContacts(),
+    listerTechniciens(),
   ]);
 
   // Historique groupé par client — une seule requête pour tous les clients
@@ -58,7 +60,11 @@ export default async function PageNouvelleFiche() {
       <Reveler delai={90}>
         <FicheFormulaire
           numeroPropose={numero}
-          technicienParDefaut={session.technicien}
+          techniciens={techniciens
+            .filter((t) => t.actif)
+            .map((t) => ({ id: t.id, nom: t.nom }))}
+          technicienParDefaut={session.id}
+          peutAttribuer={session.role === "admin"}
           clients={clients}
           equipements={equipements}
           contacts={contacts}
