@@ -207,6 +207,33 @@ export default async function PageAdmin({
           .
         </p>
       </Reveler>
+
+      <Reveler delai={60}>
+        <section className="rounded-[2rem] bg-white/45 p-1.5 ring-1 ring-white/60 shadow-flottant">
+          <div className="flex flex-col gap-5 rounded-[calc(2rem-0.375rem)] bg-surface p-6 shadow-[inset_0_1px_1px_rgba(255,255,255,0.9)] sm:flex-row sm:items-center sm:justify-between sm:p-8">
+            <div className="max-w-xl">
+              <h2 className="font-display text-[1.15rem] font-semibold tracking-[-0.03em]">
+                Sauvegarde de la base
+              </h2>
+              <p className="mt-1.5 text-[0.78rem] leading-relaxed text-ink-soft">
+                Télécharge un fichier JSON contenant toutes les données : techniciens, clients,
+                équipements, fiches avec leurs signatures, et journal. Conservez-le hors de la
+                plateforme (disque, cloud de l&apos;entreprise) et renouvelez-le chaque semaine.
+                Il contient des données clients : ne le partagez pas.
+              </p>
+            </div>
+            {/* Lien simple plutôt que Link : c'est un téléchargement, pas une
+                navigation dans l'application. */}
+            <a
+              href="/admin/sauvegarde"
+              download
+              className="shrink-0 rounded-full bg-ink px-6 py-3 text-center text-[0.88rem] font-medium text-white transition-all duration-500 ease-mass hover:bg-navy-deep active:scale-[0.98]"
+            >
+              Télécharger la sauvegarde
+            </a>
+          </div>
+        </section>
+      </Reveler>
     </div>
   );
 }

@@ -37,6 +37,7 @@ const ORDRE_ACTIONS: ActionJournal[] = [
   ACTIONS.TECHNICIEN_SUPPRESSION,
   ACTIONS.SESSION_CONNEXION,
   ACTIONS.SESSION_DECONNEXION,
+  ACTIONS.BASE_EXPORT,
 ];
 
 export default async function PageJournal({

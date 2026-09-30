@@ -35,6 +35,8 @@ export const ACTIONS = {
   // Sessions
   SESSION_CONNEXION: "session.connexion",
   SESSION_DECONNEXION: "session.deconnexion",
+  // Sauvegarde
+  BASE_EXPORT: "base.export",
 } as const;
 
 export type ActionJournal = (typeof ACTIONS)[keyof typeof ACTIONS];
@@ -64,6 +66,7 @@ export const LABELS_ACTION: Record<ActionJournal, string> = {
   [ACTIONS.EQUIPEMENT_SUPPRESSION]: "Équipement supprimé",
   [ACTIONS.SESSION_CONNEXION]: "Connexion",
   [ACTIONS.SESSION_DECONNEXION]: "Déconnexion",
+  [ACTIONS.BASE_EXPORT]: "Base exportée",
 };
 
 /** Ton visuel associé à chaque action, pour colorer la puce dans la liste. */
