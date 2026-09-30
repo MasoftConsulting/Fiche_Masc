@@ -52,6 +52,11 @@ export default async function PageFiche({
   if (!fiche) notFound();
   if (session.role !== "admin" && fiche.technicien_id !== session.id) notFound();
 
+  // Signée par le client, la fiche fait foi : lecture seule, sauf pour
+  // l'administrateur.
+  const signee = fiche.statut === "signee";
+  const verrouillee = signee && session.role !== "admin";
+
   // Historique par client, comme pour la création. On exclut la fiche en cours
   // d'édition de son propre historique.
   const historique = await historiqueParClient(
@@ -149,6 +154,14 @@ export default async function PageFiche({
         </p>
       )}
 
+      {signee && (
+        <p className="rounded-2xl bg-ink/[0.04] px-5 py-3.5 text-[0.85rem] text-ink-soft">
+          {verrouillee
+            ? "Fiche signée par le client : elle n'est plus modifiable. Contactez un administrateur pour toute correction."
+            : "Fiche signée par le client. En tant qu'administrateur, vous pouvez encore la modifier ; chaque modification est tracée dans le journal."}
+        </p>
+      )}
+
       <Reveler delai={90}>
         <FicheFormulaire
           fiche={fiche}
@@ -156,6 +169,7 @@ export default async function PageFiche({
           clients={clients}
           equipements={equipements}
           historique={historique}
+          verrouillee={verrouillee}
         />
       </Reveler>
     </div>

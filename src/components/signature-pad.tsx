@@ -14,11 +14,14 @@ export function SignaturePad({
   valeurInitiale,
   legende,
   hauteur = 190,
+  verrouille = false,
 }: {
   nom: string;
   valeurInitiale?: string | null;
   legende: string;
   hauteur?: number;
+  /** Affiche la signature enregistrée sans permettre de la modifier. */
+  verrouille?: boolean;
 }) {
   const conteneurRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -82,6 +85,7 @@ export function SignaturePad({
   }
 
   function debut(evenement: React.PointerEvent<HTMLCanvasElement>) {
+    if (verrouille) return;
     evenement.currentTarget.setPointerCapture(evenement.pointerId);
     dessine.current = true;
     dernier.current = position(evenement);
@@ -142,13 +146,15 @@ export function SignaturePad({
         <span className="text-[0.6875rem] font-semibold uppercase tracking-[0.09em] text-ink-faint">
           {legende}
         </span>
-        <button
-          type="button"
-          onClick={effacer}
-          className="rounded-full px-3 py-1 text-[0.6875rem] font-medium text-ink-soft transition-all duration-500 ease-mass hover:bg-ink/5 hover:text-ink active:scale-[0.97]"
-        >
-          Effacer
-        </button>
+        {!verrouille && (
+          <button
+            type="button"
+            onClick={effacer}
+            className="rounded-full px-3 py-1 text-[0.6875rem] font-medium text-ink-soft transition-all duration-500 ease-mass hover:bg-ink/5 hover:text-ink active:scale-[0.97]"
+          >
+            Effacer
+          </button>
+        )}
       </div>
 
       {/* Double-bezel : coque extérieure + cœur intérieur concentrique. */}
@@ -164,10 +170,10 @@ export function SignaturePad({
             onPointerUp={fin}
             onPointerLeave={fin}
             onPointerCancel={fin}
-            className="block w-full cursor-crosshair touch-none"
+            className={`block w-full touch-none ${verrouille ? "cursor-default" : "cursor-crosshair"}`}
             style={{ height: hauteur }}
           />
-          {vide && (
+          {vide && !verrouille && (
             <div className="pointer-events-none absolute inset-0 flex items-end justify-center pb-6">
               <div className="w-[72%] border-b border-dashed border-ink/15 pb-2 text-center text-[0.7rem] text-ink-faint">
                 Signez ici

@@ -14,6 +14,7 @@ import {
 type TechnicienEditable = {
   id: string;
   nom: string;
+  email: string | null;
   role: "technicien" | "admin";
   actif: boolean;
   total: number;
@@ -87,6 +88,23 @@ export function FormulaireEdition({
                 )}
               </label>
             </div>
+
+            <label className="block">
+              <span className="etiquette">Adresse e-mail</span>
+              <input
+                name="email"
+                type="email"
+                defaultValue={technicien.email ?? ""}
+                className="champ"
+                required
+                autoComplete="off"
+              />
+              <span className="mt-1.5 block text-[0.72rem] text-ink-faint">
+                {technicien.email
+                  ? "Reçoit le code à 6 chiffres demandé à chaque connexion."
+                  : "Aucune adresse : ce technicien ne peut pas se connecter tant qu'elle n'est pas renseignée."}
+              </span>
+            </label>
 
             <label className="flex cursor-pointer items-start gap-3 rounded-2xl bg-ink/[0.03] px-4 py-3.5">
               <input

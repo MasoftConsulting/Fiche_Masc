@@ -10,6 +10,7 @@ import {
   supprimerTechnicien,
   estDernierAdminActif,
   lireTechnicien,
+  normaliserEmail,
 } from "@/lib/techniciens";
 import { journaliser, ACTIONS } from "@/lib/journal";
 
@@ -41,6 +42,16 @@ export async function creerTechnicienAction(
   const nom = String(formData.get("nom") ?? "").trim();
   if (nom.length < 2) return { erreur: "Indiquez le nom du technicien." };
 
+  const email = normaliserEmail(String(formData.get("email") ?? ""));
+  if (!email) {
+    return {
+      erreur:
+        email === false
+          ? "Adresse e-mail invalide."
+          : "Indiquez l'adresse e-mail du technicien : elle reçoit le code de connexion.",
+    };
+  }
+
   const role = formData.get("role") === "admin" ? "admin" : "technicien";
   const codeImpose = String(formData.get("code") ?? "").trim();
 
@@ -51,13 +62,17 @@ export async function creerTechnicienAction(
     return { erreur: "Ce code est déjà celui de l'administrateur." };
   }
 
-  const resultat = await creerTechnicien(nom, role, codeImpose || undefined);
+  const resultat = await creerTechnicien(nom, role, codeImpose || undefined, email);
   if ("erreur" in resultat) return { erreur: resultat.erreur };
 
   await journaliser(session, ACTIONS.TECHNICIEN_CREATION, {
     tableCible: "techniciens",
     ligneId: resultat.technicien.id,
-    details: { nom: resultat.technicien.nom, role: resultat.technicien.role },
+    details: {
+      nom: resultat.technicien.nom,
+      email: resultat.technicien.email,
+      role: resultat.technicien.role,
+    },
   });
 
   revalidatePath("/admin");
@@ -216,6 +231,12 @@ export async function enregistrerTechnicienAction(
   const nom = String(formData.get("nom") ?? "").trim();
   if (nom.length < 2) return { erreur: "Le nom doit contenir au moins 2 caractères." };
 
+  const email = normaliserEmail(String(formData.get("email") ?? ""));
+  if (email === false) return { erreur: "Adresse e-mail invalide." };
+  if (email === null) {
+    return { erreur: "L'adresse e-mail est obligatoire : elle reçoit le code de connexion." };
+  }
+
   const roleDemande = formData.get("role") === "admin" ? "admin" : "technicien";
   const actifDemande = formData.get("actif") === "1";
 
@@ -242,6 +263,7 @@ export async function enregistrerTechnicienAction(
 
   const resultat = await modifierTechnicien(id, {
     nom,
+    email,
     role: roleDemande,
     actif: actifDemande,
   });
@@ -252,6 +274,7 @@ export async function enregistrerTechnicienAction(
   // ne doit pas apparaître dans l'historique.
   const changements: Record<string, { avant: unknown; apres: unknown }> = {};
   if (avant.nom !== nom) changements.nom = { avant: avant.nom, apres: nom };
+  if (avant.email !== email) changements.email = { avant: avant.email, apres: email };
   if (avant.role !== roleDemande) {
     changements.role = { avant: avant.role, apres: roleDemande };
   }

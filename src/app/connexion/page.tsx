@@ -6,11 +6,11 @@ import { FormulaireConnexion } from "./formulaire";
 export default async function PageConnexion({
   searchParams,
 }: {
-  searchParams: Promise<{ suite?: string }>;
+  searchParams: Promise<{ suite?: string; expire?: string }>;
 }) {
   if (await lireSession()) redirect("/fiches");
 
-  const { suite } = await searchParams;
+  const { suite, expire } = await searchParams;
   const configure = sessionConfiguree();
 
   return (
@@ -58,6 +58,12 @@ export default async function PageConnexion({
                 MA SOFT CONSULTING · Accès technicien
               </p>
             </div>
+
+            {expire && (
+              <p className="mb-5 rounded-2xl bg-ink/[0.04] px-4 py-3 text-[0.82rem] text-ink-soft">
+                La vérification a expiré. Saisissez à nouveau votre code d&apos;accès.
+              </p>
+            )}
 
             {configure ? (
               <FormulaireConnexion suite={suite ?? "/fiches"} />

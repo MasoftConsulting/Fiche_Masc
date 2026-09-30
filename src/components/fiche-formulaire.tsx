@@ -26,6 +26,7 @@ export function FicheFormulaire({
   clients,
   equipements,
   historique,
+  verrouillee = false,
 }: {
   fiche?: Fiche;
   numeroPropose?: string;
@@ -33,6 +34,8 @@ export function FicheFormulaire({
   clients: Client[];
   equipements: Equipement[];
   historique: Record<string, FicheResume[]>;
+  /** Fiche signée consultée par un technicien : lecture seule. */
+  verrouillee?: boolean;
 }) {
   const [etat, action] = useActionState<EtatFormulaire, FormData>(enregistrerFiche, {});
   const v = fiche;
@@ -109,365 +112,371 @@ export function FicheFormulaire({
       <input type="hidden" name="client_id" value={clientId} />
       <input type="hidden" name="equipement_id" value={equipementId} />
 
-      <header className="rounded-[2rem] bg-white/45 p-1.5 ring-1 ring-white/60 shadow-flottant">
-        <div className="flex flex-col items-center gap-5 rounded-[calc(2rem-0.375rem)] bg-navy-deep px-6 py-6 text-center sm:flex-row sm:items-center sm:gap-6 sm:text-left">
-          <span className="shrink-0 rounded-2xl bg-white px-4 py-3">
-            <LogoComplet largeur={78} priority />
-          </span>
+      {/* Un fieldset désactivé désactive d'un coup tous les champs, listes et
+          boutons qu'il contient. */}
+      <fieldset disabled={verrouillee} className="min-w-0 space-y-6">
+        <header className="rounded-[2rem] bg-white/45 p-1.5 ring-1 ring-white/60 shadow-flottant">
+          <div className="flex flex-col items-center gap-5 rounded-[calc(2rem-0.375rem)] bg-navy-deep px-6 py-6 text-center sm:flex-row sm:items-center sm:gap-6 sm:text-left">
+            <span className="shrink-0 rounded-2xl bg-white px-4 py-3">
+              <LogoComplet largeur={78} priority />
+            </span>
 
-          <div className="min-w-0 flex-1">
-            <p className="font-display text-[1.15rem] font-semibold tracking-[-0.02em] text-white sm:text-[1.3rem]">
-              MA SOFT CONSULTING
-            </p>
-            <p className="mt-1.5 text-[0.72rem] leading-relaxed text-white/55">
-              Solutions d&apos;impression · Maintenance · Installation · Configuration
-            </p>
+            <div className="min-w-0 flex-1">
+              <p className="font-display text-[1.15rem] font-semibold tracking-[-0.02em] text-white sm:text-[1.3rem]">
+                MA SOFT CONSULTING
+              </p>
+              <p className="mt-1.5 text-[0.72rem] leading-relaxed text-white/55">
+                Solutions d&apos;impression · Maintenance · Installation · Configuration
+              </p>
+            </div>
+
+            <div className="shrink-0 sm:text-right">
+              <p className="font-display text-[0.98rem] font-semibold text-white">
+                Fiche d&apos;intervention
+              </p>
+              <p className="mt-1.5 inline-flex items-center gap-1.5 text-[0.65rem] text-[#ffd24a]">
+                <span className="h-1.5 w-1.5 bg-[#ffd24a]" />
+                Validation client requise
+              </p>
+            </div>
           </div>
+        </header>
 
-          <div className="shrink-0 sm:text-right">
-            <p className="font-display text-[0.98rem] font-semibold text-white">
-              Fiche d&apos;intervention
-            </p>
-            <p className="mt-1.5 inline-flex items-center gap-1.5 text-[0.65rem] text-[#ffd24a]">
-              <span className="h-1.5 w-1.5 bg-[#ffd24a]" />
-              Validation client requise
-            </p>
-          </div>
-        </div>
-      </header>
-
-      {/* ------------------------------------------------------- en-tête */}
-      <Section titre="En-tête" numero="0" description="Identification de la fiche">
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
-          <Champ label="N° intervention">
-            <input
-              className="champ font-mono"
-              defaultValue={v?.numero ?? numeroPropose ?? ""}
-              readOnly
-              aria-readonly="true"
-            />
-          </Champ>
-          <Champ label="Date d'intervention">
-            <input
-              type="date"
-              name="date_intervention"
-              className="champ"
-              defaultValue={v?.date_intervention ?? new Date().toISOString().slice(0, 10)}
-            />
-          </Champ>
-          <Champ label="Arrivée">
-            <input type="time" name="heure_arrivee" className="champ" defaultValue={v?.heure_arrivee ?? ""} />
-          </Champ>
-          <Champ label="Départ">
-            <input type="time" name="heure_depart" className="champ" defaultValue={v?.heure_depart ?? ""} />
-          </Champ>
-          <Champ label="Facturable">
-            <select name="facturable" className="champ" defaultValue={v?.facturable ?? ""}>
-              <option value="">—</option>
-              <option value="oui">Oui</option>
-              <option value="non">Non</option>
-            </select>
-          </Champ>
-        </div>
-      </Section>
-
-      {/* --------------------------------------------- 1. informations */}
-      <Section titre="Informations générales" numero="1">
-        <div className="mb-6 rounded-2xl bg-brand/[0.05] p-4 ring-1 ring-brand/10">
-          <label className="block">
-            <span className="etiquette">Sélectionner un client</span>
-            <select
-              className="champ"
-              value={clientId}
-              onChange={(e) => changerClient(e.target.value)}
-            >
-              <option value="">— Aucun (saisie libre) —</option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nom}
-                </option>
-              ))}
-            </select>
-            <p className="mt-2 text-[0.72rem] text-ink-soft">
-              Remplit automatiquement les champs ci-dessous. Vous pouvez les
-              modifier ensuite si l&apos;intervention a lieu ailleurs.
-            </p>
-          </label>
-
-          {clientId && historique[clientId]?.length > 0 && (
-            <HistoriqueClient
-              entrees={historique[clientId]}
-              nomClient={nomClientSelectionne}
-            />
-          )}
-        </div>
-
-        <div className="grid gap-5 sm:grid-cols-2">
-          <Champ label="Société *">
-            <input
-              name="societe"
-              className="champ"
-              value={societe}
-              onChange={(e) => setSociete(e.target.value)}
-              required
-              placeholder="UTB"
-            />
-          </Champ>
-          <Champ label="Adresse">
-            <input
-              name="adresse"
-              className="champ"
-              value={adresse}
-              onChange={(e) => setAdresse(e.target.value)}
-              placeholder="Boulevard Circulaire, Lomé"
-            />
-          </Champ>
-          <Champ label="Contact">
-            <input
-              name="contact"
-              className="champ"
-              value={contact}
-              onChange={(e) => setContact(e.target.value)}
-              placeholder="Précision lieu : quartier, étage…"
-            />
-          </Champ>
-          <Champ label="Téléphone">
-            <input
-              name="telephone"
-              type="tel"
-              className="champ"
-              value={telephone}
-              onChange={(e) => setTelephone(e.target.value)}
-            />
-          </Champ>
-          <Champ label="Email">
-            <input
-              name="email"
-              type="email"
-              className="champ"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </Champ>
-          <Champ label="Technicien">
-            <input name="technicien" className="champ" defaultValue={v?.technicien ?? technicienParDefaut} />
-          </Champ>
-        </div>
-      </Section>
-
-      {/* ------------------------------------------------ 2. type */}
-      <Section titre="Type d'intervention" numero="2" description="Plusieurs choix possibles">
-        <div className="grid gap-x-8 gap-y-3.5 sm:grid-cols-2">
-          {TYPES_INTERVENTION.map((type) => (
-            <label
-              key={type.cle}
-              className="flex cursor-pointer items-center gap-3 rounded-xl px-2 py-1.5 transition-colors duration-500 ease-mass hover:bg-ink/[0.03]"
-            >
+        {/* ------------------------------------------------------- en-tête */}
+        <Section titre="En-tête" numero="0" description="Identification de la fiche">
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
+            <Champ label="N° intervention">
               <input
-                type="checkbox"
-                name={`type_${type.cle}`}
-                className="case"
-                defaultChecked={v?.types.includes(type.cle)}
+                className="champ font-mono"
+                defaultValue={v?.numero ?? numeroPropose ?? ""}
+                readOnly
+                aria-readonly="true"
               />
-              <span className="text-[0.9rem] text-ink">{type.label}</span>
-            </label>
-          ))}
-        </div>
-        <div className="mt-5 max-w-md">
-          <Champ label="Préciser « Autre »">
-            <input name="type_autre" className="champ" defaultValue={v?.type_autre ?? ""} />
-          </Champ>
-        </div>
-      </Section>
+            </Champ>
+            <Champ label="Date d'intervention">
+              <input
+                type="date"
+                name="date_intervention"
+                className="champ"
+                defaultValue={v?.date_intervention ?? new Date().toISOString().slice(0, 10)}
+              />
+            </Champ>
+            <Champ label="Arrivée">
+              <input type="time" name="heure_arrivee" className="champ" defaultValue={v?.heure_arrivee ?? ""} />
+            </Champ>
+            <Champ label="Départ">
+              <input type="time" name="heure_depart" className="champ" defaultValue={v?.heure_depart ?? ""} />
+            </Champ>
+            <Champ label="Facturable">
+              <select name="facturable" className="champ" defaultValue={v?.facturable ?? ""}>
+                <option value="">—</option>
+                <option value="oui">Oui</option>
+                <option value="non">Non</option>
+              </select>
+            </Champ>
+          </div>
+        </Section>
 
-      {/* -------------------------------------------- 3. matériel */}
-      <Section titre="Matériel concerné" numero="3">
-        <div className="mb-6 rounded-2xl bg-brand/[0.05] p-4 ring-1 ring-brand/10">
-          <label className="block">
-            <span className="etiquette">Sélectionner un équipement</span>
-            <select
-              className="champ"
-              value={equipementId}
-              onChange={(e) => changerEquipement(e.target.value)}
-              disabled={!clientId}
-            >
-              <option value="">
+        {/* --------------------------------------------- 1. informations */}
+        <Section titre="Informations générales" numero="1">
+          <div className="mb-6 rounded-2xl bg-brand/[0.05] p-4 ring-1 ring-brand/10">
+            <label className="block">
+              <span className="etiquette">Sélectionner un client</span>
+              <select
+                className="champ"
+                value={clientId}
+                onChange={(e) => changerClient(e.target.value)}
+              >
+                <option value="">— Aucun (saisie libre) —</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nom}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-2 text-[0.72rem] text-ink-soft">
+                Remplit automatiquement les champs ci-dessous. Vous pouvez les
+                modifier ensuite si l&apos;intervention a lieu ailleurs.
+              </p>
+            </label>
+
+            {clientId && historique[clientId]?.length > 0 && (
+              <HistoriqueClient
+                entrees={historique[clientId]}
+                nomClient={nomClientSelectionne}
+              />
+            )}
+          </div>
+
+          <div className="grid gap-5 sm:grid-cols-2">
+            <Champ label="Société *">
+              <input
+                name="societe"
+                className="champ"
+                value={societe}
+                onChange={(e) => setSociete(e.target.value)}
+                required
+                placeholder="UTB"
+              />
+            </Champ>
+            <Champ label="Adresse">
+              <input
+                name="adresse"
+                className="champ"
+                value={adresse}
+                onChange={(e) => setAdresse(e.target.value)}
+                placeholder="Boulevard Circulaire, Lomé"
+              />
+            </Champ>
+            <Champ label="Contact">
+              <input
+                name="contact"
+                className="champ"
+                value={contact}
+                onChange={(e) => setContact(e.target.value)}
+                placeholder="Précision lieu : quartier, étage…"
+              />
+            </Champ>
+            <Champ label="Téléphone">
+              <input
+                name="telephone"
+                type="tel"
+                className="champ"
+                value={telephone}
+                onChange={(e) => setTelephone(e.target.value)}
+              />
+            </Champ>
+            <Champ label="Email">
+              <input
+                name="email"
+                type="email"
+                className="champ"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </Champ>
+            <Champ label="Technicien">
+              <input name="technicien" className="champ" defaultValue={v?.technicien ?? technicienParDefaut} />
+            </Champ>
+          </div>
+        </Section>
+
+        {/* ------------------------------------------------ 2. type */}
+        <Section titre="Type d'intervention" numero="2" description="Plusieurs choix possibles">
+          <div className="grid gap-x-8 gap-y-3.5 sm:grid-cols-2">
+            {TYPES_INTERVENTION.map((type) => (
+              <label
+                key={type.cle}
+                className="flex cursor-pointer items-center gap-3 rounded-xl px-2 py-1.5 transition-colors duration-500 ease-mass hover:bg-ink/[0.03]"
+              >
+                <input
+                  type="checkbox"
+                  name={`type_${type.cle}`}
+                  className="case"
+                  defaultChecked={v?.types.includes(type.cle)}
+                />
+                <span className="text-[0.9rem] text-ink">{type.label}</span>
+              </label>
+            ))}
+          </div>
+          <div className="mt-5 max-w-md">
+            <Champ label="Préciser « Autre »">
+              <input name="type_autre" className="champ" defaultValue={v?.type_autre ?? ""} />
+            </Champ>
+          </div>
+        </Section>
+
+        {/* -------------------------------------------- 3. matériel */}
+        <Section titre="Matériel concerné" numero="3">
+          <div className="mb-6 rounded-2xl bg-brand/[0.05] p-4 ring-1 ring-brand/10">
+            <label className="block">
+              <span className="etiquette">Sélectionner un équipement</span>
+              <select
+                className="champ"
+                value={equipementId}
+                onChange={(e) => changerEquipement(e.target.value)}
+                disabled={!clientId}
+              >
+                <option value="">
+                  {clientId
+                    ? equipementsDuClient.length > 0
+                      ? "— Aucun (saisie libre) —"
+                      : "Aucun équipement enregistré pour ce client"
+                    : "Sélectionnez d'abord un client"}
+                </option>
+                {equipementsDuClient.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.marque_modele ?? "Équipement"}
+                    {e.numero_serie ? ` · ${e.numero_serie}` : ""}
+                    {e.localisation ? ` · ${e.localisation}` : ""}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-2 text-[0.72rem] text-ink-soft">
                 {clientId
-                  ? equipementsDuClient.length > 0
-                    ? "— Aucun (saisie libre) —"
-                    : "Aucun équipement enregistré pour ce client"
-                  : "Sélectionnez d'abord un client"}
-              </option>
-              {equipementsDuClient.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.marque_modele ?? "Équipement"}
-                  {e.numero_serie ? ` · ${e.numero_serie}` : ""}
-                  {e.localisation ? ` · ${e.localisation}` : ""}
-                </option>
-              ))}
-            </select>
-            <p className="mt-2 text-[0.72rem] text-ink-soft">
-              {clientId
-                ? "Remplit automatiquement la marque, le numéro de série, l'IP et la localisation."
-                : "L'équipement dépend du client — choisissez d'abord le client en section 1."}
-            </p>
-          </label>
-        </div>
-
-        <div className="grid gap-5 sm:grid-cols-2">
-          <Champ label="Marque / Modèle">
-            <input
-              name="marque_modele"
-              className="champ"
-              value={marqueModele}
-              onChange={(e) => setMarqueModele(e.target.value)}
-            />
-          </Champ>
-          <Champ label="N° de série">
-            <input
-              name="numero_serie"
-              className="champ font-mono"
-              value={numeroSerie}
-              onChange={(e) => setNumeroSerie(e.target.value)}
-            />
-          </Champ>
-          <Champ label="Adresse IP">
-            <input
-              name="adresse_ip"
-              className="champ font-mono"
-              value={adresseIp}
-              onChange={(e) => setAdresseIp(e.target.value)}
-              placeholder="192.168.1.50"
-            />
-          </Champ>
-          <Champ label="Localisation">
-            <input
-              name="localisation"
-              className="champ"
-              value={localisation}
-              onChange={(e) => setLocalisation(e.target.value)}
-            />
-          </Champ>
-        </div>
-      </Section>
-
-      {/* -------------------------------------------- 4. compteurs */}
-      <Section titre="Compteur machine" numero="4" description="Relevé validé par le client">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Compteur
-            titre="Noir & blanc"
-            nom="compteur_nb"
-            valeur={v?.compteur_nb ?? ""}
-            valide={v?.compteur_nb_valide ?? false}
-          />
-          <Compteur
-            titre="Couleur"
-            nom="compteur_couleur"
-            valeur={v?.compteur_couleur ?? ""}
-            valide={v?.compteur_couleur_valide ?? false}
-          />
-        </div>
-      </Section>
-
-      {/* ---------------------------------------------- 5. détail */}
-      <Section titre="Détail de l'intervention" numero="5">
-        <textarea
-          name="detail"
-          className="champ min-h-[11rem]"
-          defaultValue={v?.detail ?? ""}
-          placeholder="Constat, opérations réalisées, pièces remplacées…"
-        />
-      </Section>
-
-      {/* --------------------------------------------- 6. résultat */}
-      <Section titre="Résultat de l'intervention" numero="6">
-        <div className="grid gap-3 sm:grid-cols-3">
-          {RESULTATS.map((resultat) => (
-            <label
-              key={resultat.cle}
-              className="flex cursor-pointer items-center gap-3 rounded-xl px-2 py-2 transition-colors duration-500 ease-mass hover:bg-ink/[0.03]"
-            >
-              <input
-                type="radio"
-                name="resultat"
-                value={resultat.cle}
-                className="pastille"
-                defaultChecked={v?.resultat === resultat.cle}
-              />
-              <span className="text-[0.9rem]">{resultat.label}</span>
+                  ? "Remplit automatiquement la marque, le numéro de série, l'IP et la localisation."
+                  : "L'équipement dépend du client — choisissez d'abord le client en section 1."}
+              </p>
             </label>
-          ))}
-        </div>
-        <div className="mt-5">
-          <Champ label="Commentaires">
-            <input name="commentaires" className="champ" defaultValue={v?.commentaires ?? ""} />
-          </Champ>
-        </div>
-      </Section>
+          </div>
 
-      {/* ------------------------------------------------ 7. tests */}
-      <Section titre="Tests effectués" numero="7">
-        <div className="grid gap-x-8 gap-y-3.5 sm:grid-cols-2 lg:grid-cols-4">
-          {TESTS_EFFECTUES.map((test) => (
-            <label
-              key={test.cle}
-              className="flex cursor-pointer items-center gap-3 rounded-xl px-2 py-1.5 transition-colors duration-500 ease-mass hover:bg-ink/[0.03]"
-            >
+          <div className="grid gap-5 sm:grid-cols-2">
+            <Champ label="Marque / Modèle">
               <input
-                type="checkbox"
-                name={`test_${test.cle}`}
-                className="case"
-                defaultChecked={v?.tests.includes(test.cle)}
+                name="marque_modele"
+                className="champ"
+                value={marqueModele}
+                onChange={(e) => setMarqueModele(e.target.value)}
               />
-              <span className="text-[0.9rem]">{test.label}</span>
-            </label>
-          ))}
-        </div>
-        <div className="mt-5">
-          <Champ label="Autres tests">
-            <input name="tests_autres" className="champ" defaultValue={v?.tests_autres ?? ""} />
-          </Champ>
-        </div>
-      </Section>
+            </Champ>
+            <Champ label="N° de série">
+              <input
+                name="numero_serie"
+                className="champ font-mono"
+                value={numeroSerie}
+                onChange={(e) => setNumeroSerie(e.target.value)}
+              />
+            </Champ>
+            <Champ label="Adresse IP">
+              <input
+                name="adresse_ip"
+                className="champ font-mono"
+                value={adresseIp}
+                onChange={(e) => setAdresseIp(e.target.value)}
+                placeholder="192.168.1.50"
+              />
+            </Champ>
+            <Champ label="Localisation">
+              <input
+                name="localisation"
+                className="champ"
+                value={localisation}
+                onChange={(e) => setLocalisation(e.target.value)}
+              />
+            </Champ>
+          </div>
+        </Section>
 
-      {/* -------------------------------------- 8. recommandations */}
-      <Section titre="Recommandations / actions à prévoir" numero="8">
-        <textarea
-          name="recommandations"
-          className="champ min-h-[9rem]"
-          defaultValue={v?.recommandations ?? ""}
-          placeholder="Consommables à commander, prochaine visite, formation à planifier…"
-        />
-      </Section>
+        {/* -------------------------------------------- 4. compteurs */}
+        <Section titre="Compteur machine" numero="4" description="Relevé validé par le client">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Compteur
+              titre="Noir & blanc"
+              nom="compteur_nb"
+              valeur={v?.compteur_nb ?? ""}
+              valide={v?.compteur_nb_valide ?? false}
+            />
+            <Compteur
+              titre="Couleur"
+              nom="compteur_couleur"
+              valeur={v?.compteur_couleur ?? ""}
+              valide={v?.compteur_couleur_valide ?? false}
+            />
+          </div>
+        </Section>
 
-      {/* ------------------------------------------- 9. validation */}
-      <Section
-        titre="Validation client"
-        numero="9"
-        description="La fiche passe en « signée » dès que le client a signé"
-      >
-        <div className="grid gap-5 sm:grid-cols-2">
-          <Champ label="Nom du client">
-            <input name="client_nom" className="champ" defaultValue={v?.client_nom ?? ""} />
-          </Champ>
-          <Champ label="Fonction">
-            <input name="client_fonction" className="champ" defaultValue={v?.client_fonction ?? ""} />
-          </Champ>
-        </div>
-
-        <div className="mt-8 grid gap-6 sm:grid-cols-2">
-          <SignaturePad
-            nom="signature_client"
-            legende="Signature client + tampon"
-            valeurInitiale={v?.signature_client}
+        {/* ---------------------------------------------- 5. détail */}
+        <Section titre="Détail de l'intervention" numero="5">
+          <textarea
+            name="detail"
+            className="champ min-h-[11rem]"
+            defaultValue={v?.detail ?? ""}
+            placeholder="Constat, opérations réalisées, pièces remplacées…"
           />
-          <SignaturePad
-            nom="signature_technicien"
-            legende="Signature technicien"
-            valeurInitiale={v?.signature_technicien}
+        </Section>
+
+        {/* --------------------------------------------- 6. résultat */}
+        <Section titre="Résultat de l'intervention" numero="6">
+          <div className="grid gap-3 sm:grid-cols-3">
+            {RESULTATS.map((resultat) => (
+              <label
+                key={resultat.cle}
+                className="flex cursor-pointer items-center gap-3 rounded-xl px-2 py-2 transition-colors duration-500 ease-mass hover:bg-ink/[0.03]"
+              >
+                <input
+                  type="radio"
+                  name="resultat"
+                  value={resultat.cle}
+                  className="pastille"
+                  defaultChecked={v?.resultat === resultat.cle}
+                />
+                <span className="text-[0.9rem]">{resultat.label}</span>
+              </label>
+            ))}
+          </div>
+          <div className="mt-5">
+            <Champ label="Commentaires">
+              <input name="commentaires" className="champ" defaultValue={v?.commentaires ?? ""} />
+            </Champ>
+          </div>
+        </Section>
+
+        {/* ------------------------------------------------ 7. tests */}
+        <Section titre="Tests effectués" numero="7">
+          <div className="grid gap-x-8 gap-y-3.5 sm:grid-cols-2 lg:grid-cols-4">
+            {TESTS_EFFECTUES.map((test) => (
+              <label
+                key={test.cle}
+                className="flex cursor-pointer items-center gap-3 rounded-xl px-2 py-1.5 transition-colors duration-500 ease-mass hover:bg-ink/[0.03]"
+              >
+                <input
+                  type="checkbox"
+                  name={`test_${test.cle}`}
+                  className="case"
+                  defaultChecked={v?.tests.includes(test.cle)}
+                />
+                <span className="text-[0.9rem]">{test.label}</span>
+              </label>
+            ))}
+          </div>
+          <div className="mt-5">
+            <Champ label="Autres tests">
+              <input name="tests_autres" className="champ" defaultValue={v?.tests_autres ?? ""} />
+            </Champ>
+          </div>
+        </Section>
+
+        {/* -------------------------------------- 8. recommandations */}
+        <Section titre="Recommandations / actions à prévoir" numero="8">
+          <textarea
+            name="recommandations"
+            className="champ min-h-[9rem]"
+            defaultValue={v?.recommandations ?? ""}
+            placeholder="Consommables à commander, prochaine visite, formation à planifier…"
           />
-        </div>
-      </Section>
+        </Section>
+
+        {/* ------------------------------------------- 9. validation */}
+        <Section
+          titre="Validation client"
+          numero="9"
+          description="La fiche passe en « signée » dès que le client a signé"
+        >
+          <div className="grid gap-5 sm:grid-cols-2">
+            <Champ label="Nom du client">
+              <input name="client_nom" className="champ" defaultValue={v?.client_nom ?? ""} />
+            </Champ>
+            <Champ label="Fonction">
+              <input name="client_fonction" className="champ" defaultValue={v?.client_fonction ?? ""} />
+            </Champ>
+          </div>
+
+          <div className="mt-8 grid gap-6 sm:grid-cols-2">
+            <SignaturePad
+              nom="signature_client"
+              legende="Signature client + tampon"
+              valeurInitiale={v?.signature_client}
+              verrouille={verrouillee}
+            />
+            <SignaturePad
+              nom="signature_technicien"
+              legende="Signature technicien"
+              valeurInitiale={v?.signature_technicien}
+              verrouille={verrouillee}
+            />
+          </div>
+        </Section>
+      </fieldset>
 
       {etat.erreur && (
         <p className="rounded-2xl bg-rouille/10 px-5 py-4 text-[0.87rem] text-rouille">
@@ -475,7 +484,7 @@ export function FicheFormulaire({
         </p>
       )}
 
-      <BarreActions id={v?.id} />
+      <BarreActions id={v?.id} verrouillee={verrouillee} />
     </form>
   );
 }
@@ -627,7 +636,7 @@ function formaterDateCourte(valeur: string) {
   });
 }
 
-function BarreActions({ id }: { id?: string }) {
+function BarreActions({ id, verrouillee }: { id?: string; verrouillee?: boolean }) {
   const { useFormStatus: _useFormStatus } = { useFormStatus };
   const { pending } = useFormStatus();
 
@@ -639,8 +648,9 @@ function BarreActions({ id }: { id?: string }) {
       <div className="rounded-full border border-white/60 bg-white/70 p-2 shadow-souleve backdrop-blur-2xl">
         <div className="flex flex-col items-center gap-2 sm:flex-row sm:justify-between sm:pl-5">
           <p className="hidden text-[0.78rem] text-ink-soft sm:block">
-            {id ? "Modification de la fiche" : "Nouvelle fiche"} — les champs vides restent vides à
-            l&apos;impression.
+            {verrouillee
+              ? "Fiche signée — lecture seule. Seul un administrateur peut la modifier."
+              : `${id ? "Modification de la fiche" : "Nouvelle fiche"} — les champs vides restent vides à l'impression.`}
           </p>
 
           <div className="flex w-full gap-2 sm:w-auto">
@@ -654,18 +664,20 @@ function BarreActions({ id }: { id?: string }) {
               </Link>
             )}
 
-            <button
-              type="submit"
-              disabled={pending}
-              className="group flex flex-1 items-center justify-between gap-3 rounded-full bg-ink py-2 pr-2 pl-6 text-[0.92rem] font-medium text-white transition-all duration-500 ease-mass hover:bg-navy-deep active:scale-[0.98] disabled:opacity-60 sm:flex-none"
-            >
-              <span>{pending ? "Enregistrement…" : "Enregistrer"}</span>
-              <span className="grid h-9 w-9 place-items-center rounded-full bg-white/12 transition-all duration-500 ease-mass group-hover:translate-x-1 group-hover:-translate-y-[1px] group-hover:scale-105">
-                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 8.4l3.4 3.4L13 4.6" />
-                </svg>
-              </span>
-            </button>
+            {!verrouillee && (
+              <button
+                type="submit"
+                disabled={pending}
+                className="group flex flex-1 items-center justify-between gap-3 rounded-full bg-ink py-2 pr-2 pl-6 text-[0.92rem] font-medium text-white transition-all duration-500 ease-mass hover:bg-navy-deep active:scale-[0.98] disabled:opacity-60 sm:flex-none"
+              >
+                <span>{pending ? "Enregistrement…" : "Enregistrer"}</span>
+                <span className="grid h-9 w-9 place-items-center rounded-full bg-white/12 transition-all duration-500 ease-mass group-hover:translate-x-1 group-hover:-translate-y-[1px] group-hover:scale-105">
+                  <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 8.4l3.4 3.4L13 4.6" />
+                  </svg>
+                </span>
+              </button>
+            )}
           </div>
         </div>
       </div>

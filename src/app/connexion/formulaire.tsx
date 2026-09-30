@@ -12,7 +12,7 @@ function BoutonEntrer() {
       disabled={pending}
       className="group flex w-full items-center justify-between gap-3 rounded-full bg-ink py-2 pr-2 pl-6 text-[0.95rem] font-medium text-white shadow-flottant transition-all duration-500 ease-mass hover:bg-navy-deep active:scale-[0.98] disabled:opacity-60"
     >
-      <span>{pending ? "Vérification…" : "Entrer"}</span>
+      <span>{pending ? "Envoi du code…" : "Continuer"}</span>
       {/* Bouton dans le bouton : l'icône vit dans son propre disque. */}
       <span className="grid h-9 w-9 place-items-center rounded-full bg-white/12 transition-all duration-500 ease-mass group-hover:translate-x-1 group-hover:-translate-y-[1px] group-hover:scale-105">
         <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
@@ -56,7 +56,7 @@ export function FormulaireConnexion({ suite }: { suite: string }) {
 
       <p className="pt-1 text-center text-[0.75rem] leading-relaxed text-ink-faint">
         Votre code vous identifie : il renseigne seul le champ « Technicien » de
-        vos fiches. Demandez-le à l&apos;administrateur.
+        vos fiches. Un code de confirmation vous sera ensuite envoyé par e-mail.
       </p>
     </form>
   );

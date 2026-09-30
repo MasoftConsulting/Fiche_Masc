@@ -8,6 +8,8 @@ const TABLE = "techniciens";
 export type Technicien = {
   id: string;
   nom: string;
+  /** Destinataire du code de connexion (double authentification). */
+  email: string | null;
   role: "technicien" | "admin";
   actif: boolean;
   created_at: string;
@@ -35,6 +37,13 @@ export function genererCode() {
 }
 
 /* ------------------------------------------------------------- connexion */
+
+/** Adresse normalisée, ou null si vide. `false` si le format est invalide. */
+export function normaliserEmail(valeur: string): string | null | false {
+  const email = valeur.trim().toLowerCase();
+  if (!email) return null;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : false;
+}
 
 /** Retrouve le technicien porteur de ce code, s'il est encore actif. */
 export async function authentifierParCode(code: string): Promise<Technicien | null> {
@@ -164,6 +173,7 @@ export async function creerTechnicien(
   nom: string,
   role: Technicien["role"] = "technicien",
   codeImpose?: string,
+  email: string | null = null,
 ): Promise<ResultatCode | { erreur: string }> {
   const supabase = createAdminClient();
   if (!supabase) return { erreur: "Supabase n'est pas configuré." };
@@ -173,7 +183,7 @@ export async function creerTechnicien(
 
     const { data, error } = await supabase
       .from(TABLE)
-      .insert({ nom, role, code_hash: hacherCode(code) })
+      .insert({ nom, email, role, code_hash: hacherCode(code) })
       .select("*")
       .single();
 
@@ -215,7 +225,7 @@ export async function regenererCode(id: string): Promise<ResultatCode | { erreur
 
 export async function modifierTechnicien(
   id: string,
-  valeurs: Partial<Pick<Technicien, "nom" | "role" | "actif">>,
+  valeurs: Partial<Pick<Technicien, "nom" | "email" | "role" | "actif">>,
 ) {
   const supabase = createAdminClient();
   if (!supabase) return { erreur: "Supabase n'est pas configuré." };
