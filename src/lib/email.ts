@@ -22,15 +22,28 @@ type ConfigSmtp = {
   from: string;
 };
 
+/**
+ * Valeur d'environnement débarrassée des blancs et des guillemets englobants.
+ *
+ * Copiées-collées dans l'interface de Vercel, les valeurs arrivent parfois
+ * avec une tabulation ou les guillemets du fichier .env : un nom de serveur
+ * précédé d'une tabulation est introuvable (getaddrinfo EBUSY).
+ */
+function variable(nom: string) {
+  const valeur = (process.env[nom] ?? "").trim();
+  const englobee = /^(["'])([\s\S]*)\1$/.exec(valeur);
+  return (englobee ? englobee[2] : valeur).trim();
+}
+
 function lireConfig(): ConfigSmtp | null {
-  const host = process.env.SMTP_HOST;
-  const user = process.env.SMTP_USER;
-  const password = process.env.SMTP_PASSWORD;
+  const host = variable("SMTP_HOST");
+  const user = variable("SMTP_USER");
+  const password = variable("SMTP_PASSWORD");
 
   if (!host || !user || !password) return null;
 
   // 465 est le port TLS implicite ; 587 et 25 passent par STARTTLS.
-  const port = Number(process.env.SMTP_PORT || 587);
+  const port = Number(variable("SMTP_PORT") || 587);
 
   return {
     host,
@@ -38,7 +51,7 @@ function lireConfig(): ConfigSmtp | null {
     secure: port === 465,
     user,
     password,
-    from: process.env.SMTP_FROM || user,
+    from: variable("SMTP_FROM") || user,
   };
 }
 
